@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#16372f">
+  <meta name="description" content="從候選數到進階策略，會解釋每一步的數獨學習網站。">
+  <title>數織學堂｜Sudoku Learning Studio</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="數織學堂首頁">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <span><b>數織學堂</b><small>SUDOKU LEARNING STUDIO</small></span>
+      </a>
+      <div class="progress-pill"><span>本機學習紀錄</span><strong id="solved-count">0 題完成</strong></div>
+    </header>
+
+    <nav class="main-nav" aria-label="主要功能">
+      <button class="nav-item active" data-view="practice" type="button"><span>01</span>解題教室</button>
+      <button class="nav-item" data-view="generator" type="button"><span>02</span>智慧出題</button>
+      <button class="nav-item" data-view="analyzer" type="button"><span>03</span>題目分析</button>
+      <button class="nav-item" data-view="learn" type="button"><span>04</span>技巧圖鑑</button>
+    </nav>
+
+    <main>
+      <section id="practice-view" class="view active">
+        <div class="section-heading">
+          <div><p class="eyebrow">LEARN BY REASONING</p><h1>看懂「為什麼」，<br>不只是填入答案。</h1></div>
+          <p class="intro">每一題都有候選數、衝突檢查與分步提示。先觀察，再讓教練揭示一個足以繼續前進的線索。</p>
+        </div>
+
+        <div class="practice-grid">
+          <section class="board-card" aria-label="數獨棋盤">
+            <div class="board-toolbar">
+              <div><span id="difficulty-badge" class="difficulty-badge">入門</span><strong id="puzzle-title">今日暖身題</strong></div>
+              <div class="timer" aria-label="作答時間"><span class="timer-dot"></span><time id="timer">00:00</time></div>
+            </div>
+            <div id="sudoku-board" class="sudoku-board" role="grid" aria-label="九乘九數獨盤面"></div>
+            <div class="number-pad" aria-label="數字鍵盤">
+              <button data-number="1" type="button">1</button><button data-number="2" type="button">2</button><button data-number="3" type="button">3</button>
+              <button data-number="4" type="button">4</button><button data-number="5" type="button">5</button><button data-number="6" type="button">6</button>
+              <button data-number="7" type="button">7</button><button data-number="8" type="button">8</button><button data-number="9" type="button">9</button>
+            </div>
+            <div class="board-actions">
+              <button id="undo-btn" type="button"><span>↶</span>復原</button>
+              <button id="notes-btn" type="button"><span>✎</span>筆記 <b>關</b></button>
+              <button id="erase-btn" type="button"><span>⌫</span>清除</button>
+              <button id="reset-btn" type="button"><span>↺</span>重來</button>
+            </div>
+          </section>
+
+          <aside class="coach-card">
+            <div class="coach-heading"><p class="eyebrow">YOUR SUDOKU COACH</p><span class="coach-status">在線</span></div>
+            <div id="coach-content" class="coach-content">
+              <span class="lesson-number">觀察 01</span>
+              <h2>先從候選數最少的格子開始</h2>
+              <p>點選一個空格，我會標示同行、同列與同宮的關係，並整理這一格還能填入哪些數字。</p>
+              <div class="concept-box"><b>學習重點</b><p>數獨的每一步，都必須能由盤面規則推導，不需要猜。</p></div>
+            </div>
+            <div id="hint-actions" class="hint-actions">
+              <button id="hint-btn" class="primary-btn" type="button">給我一個提示 <span>→</span></button>
+              <button id="apply-hint-btn" class="secondary-btn" type="button" hidden>套用這一步</button>
+            </div>
+            <div class="completion-meter"><div><span>完成度</span><strong id="completion-label">0%</strong></div><div class="meter"><i id="completion-bar"></i></div></div>
+            <button id="check-btn" class="check-btn" type="button">檢查目前答案</button>
+          </aside>
+        </div>
+      </section>
+
+      <section id="generator-view" class="view tool-view">
+        <div class="tool-copy"><p class="eyebrow">PUZZLE GENERATOR</p><h1>為今天的狀態，<br>出一題剛好的題目。</h1><p>每題在瀏覽器內即時生成，保證只有一個解。種子碼讓老師與學生能重現完全相同的題目。</p></div>
+        <div class="tool-card generator-card">
+          <label>選擇難度</label>
+          <div class="difficulty-options" role="radiogroup">
+            <button class="selected" data-difficulty="easy" type="button"><b>入門</b><span>單一候選</span></button>
+            <button data-difficulty="medium" type="button"><b>進階</b><span>隱性單數</span></button>
+            <button data-difficulty="hard" type="button"><b>挑戰</b><span>區塊排除</span></button>
+            <button data-difficulty="expert" type="button"><b>專家</b><span>綜合推理</span></button>
+          </div>
+          <label for="seed-input">題目種子碼 <small>（可留白自動產生）</small></label>
+          <div class="seed-row"><input id="seed-input" maxlength="24" placeholder="例如 TAIPEI-0816"><button id="random-seed-btn" type="button">換一組</button></div>
+          <div class="generator-facts"><div><span>唯一解</span><b>✓</b></div><div><span>種子可重現</span><b>✓</b></div><div><span>本機生成</span><b>✓</b></div></div>
+          <button id="generate-btn" class="primary-btn" type="button">生成並開始解題 <span>→</span></button>
+        </div>
+      </section>
+
+      <section id="analyzer-view" class="view tool-view">
+        <div class="tool-copy"><p class="eyebrow">PUZZLE ANALYZER</p><h1>把一道題目，<br>拆成可以學會的步驟。</h1><p>輸入 81 格題目，空格可用 0 或句點表示。分析器會檢查盤面、唯一解、難度與主要技巧。</p></div>
+        <div class="tool-card analyzer-card">
+          <label for="puzzle-input">貼上題目</label>
+          <textarea id="puzzle-input" rows="5" spellcheck="false" placeholder="530070000600195000…"></textarea>
+          <div class="analyzer-actions"><button id="use-current-btn" type="button">使用目前盤面</button><button id="analyze-btn" class="primary-btn" type="button">開始分析 <span>→</span></button></div>
+          <div id="analysis-result" class="analysis-result" aria-live="polite"><p>分析結果會顯示在這裡。</p></div>
+        </div>
+      </section>
+
+      <section id="learn-view" class="view">
+        <div class="section-heading compact"><div><p class="eyebrow">TECHNIQUE LIBRARY</p><h1>從看見一個數，<br>到看懂整個結構。</h1></div><p class="intro">依序掌握四個核心觀念。每張卡都說明「觀察什麼」與「為何成立」。</p></div>
+        <div class="technique-grid">
+          <article><span>01 · 基礎</span><div class="mini-grid single" aria-hidden="true"></div><h2>唯一候選數</h2><p>某一格的其他數字都被同行、同列或同宮排除，只剩一個可能。</p><b>找「格子只剩一個數」</b></article>
+          <article><span>02 · 基礎</span><div class="mini-grid hidden" aria-hidden="true"></div><h2>隱性單數</h2><p>在一個行、列或九宮內，某個數字只有一個位置可以放。</p><b>找「數字只剩一個家」</b></article>
+          <article><span>03 · 進階</span><div class="mini-grid locked" aria-hidden="true"></div><h2>區塊排除</h2><p>一個宮內某數的候選位置都落在同一行，就能從該行其他宮排除它。</p><b>讓宮與行列互相提供線索</b></article>
+          <article><span>04 · 進階</span><div class="mini-grid pair" aria-hidden="true"></div><h2>顯性數對</h2><p>同一單位有兩格都只剩相同兩個候選數，其他格就不能再使用它們。</p><b>用一對格子鎖定兩個數</b></article>
+        </div>
+      </section>
+    </main>
+    <footer><span>數織學堂 · 在本機思考，在每一步學習</span><span>無廣告 · 無登入 · 資料不離開裝置</span></footer>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
