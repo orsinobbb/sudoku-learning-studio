@@ -1,0 +1,14 @@
+{
+  "name": "sudoku-learning-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure-frontend Traditional Chinese Sudoku learning studio",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
