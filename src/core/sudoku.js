@@ -255,6 +255,27 @@ function createCandidateMap(grid) {
   return new Map(grid.map((value, index) => [value, index]).filter(([value]) => !value).map(([, index]) => [index, new Set(candidatesFor(grid, index))]));
 }
 
+function combinations(values, size, start = 0, chosen = [], output = []) {
+  if (chosen.length === size) {
+    output.push([...chosen]);
+    return output;
+  }
+  for (let index = start; index <= values.length - (size - chosen.length); index += 1) {
+    chosen.push(values[index]);
+    combinations(values, size, index + 1, chosen, output);
+    chosen.pop();
+  }
+  return output;
+}
+
+const SUBSET_NAMES = {
+  2: { naked: 'nakedPair', hidden: 'hiddenPair', label: '數對' },
+  3: { naked: 'nakedTriple', hidden: 'hiddenTriple', label: '三數組' },
+  4: { naked: 'nakedQuad', hidden: 'hiddenQuad', label: '四數組' }
+};
+
+const FISH_NAMES = { 2: 'xWing', 3: 'swordfish', 4: 'jellyfish' };
+
 export function logicalSolve(source) {
   assertGrid(source);
   const initialValidation = validateGrid(source);
@@ -262,8 +283,14 @@ export function logicalSolve(source) {
   const grid = [...source];
   const candidateMap = createCandidateMap(grid);
   const steps = [];
-  let hardest = 'single';
-  const ranks = { single: 1, hidden: 2, locked: 3, pair: 4, trial: 5 };
+  let hardest = 'fullHouse';
+  const ranks = {
+    fullHouse: 1, nakedSingle: 1, hiddenSingle: 2,
+    lockedPointing: 3, lockedClaiming: 3,
+    nakedPair: 4, hiddenPair: 4,
+    nakedTriple: 5, hiddenTriple: 5, nakedQuad: 5, hiddenQuad: 5,
+    xWing: 6, xyWing: 7, swordfish: 7, jellyfish: 8, search: 9
+  };
 
   function record(step) {
     steps.push({ number: steps.length + 1, ...step });
@@ -286,26 +313,132 @@ export function logicalSolve(source) {
     return changed.length > 0;
   }
 
+  function eliminateMany(indices, digits, strategy, explanation, related = []) {
+    const changed = [];
+    for (const index of indices) {
+      const values = candidateMap.get(index);
+      if (!values) continue;
+      for (const digit of digits) if (values.delete(digit)) changed.push(index);
+    }
+    if (changed.length) record({ kind: 'elimination', strategy, indices: [...new Set(changed)], digits, related, explanation });
+    return changed.length > 0;
+  }
+
+  function findNakedSubset(size) {
+    for (let unitIndex = 0; unitIndex < UNITS.length; unitIndex += 1) {
+      const eligible = UNITS[unitIndex].filter((index) => {
+        const count = candidateMap.get(index)?.size || 0;
+        return count >= 2 && count <= size;
+      });
+      for (const anchors of combinations(eligible, size)) {
+        const digits = [...new Set(anchors.flatMap((index) => [...candidateMap.get(index)]))].sort();
+        if (digits.length !== size) continue;
+        const targets = UNITS[unitIndex].filter((index) => !anchors.includes(index));
+        const name = SUBSET_NAMES[size];
+        if (eliminateMany(targets, digits, name.naked, `${unitName(unitIndex)}中的 ${size} 格只包含 ${digits.join('、')}，形成顯性${name.label}；其他格可排除這些數。`, anchors)) return true;
+      }
+    }
+    return false;
+  }
+
+  function findHiddenSubset(size) {
+    for (let unitIndex = 0; unitIndex < UNITS.length; unitIndex += 1) {
+      const unit = UNITS[unitIndex];
+      const availableDigits = Array.from({ length: 9 }, (_, index) => index + 1).filter((digit) => unit.some((cell) => candidateMap.get(cell)?.has(digit)));
+      for (const digits of combinations(availableDigits, size)) {
+        const anchors = unit.filter((cell) => digits.some((digit) => candidateMap.get(cell)?.has(digit)));
+        if (anchors.length !== size || digits.some((digit) => !anchors.some((cell) => candidateMap.get(cell)?.has(digit)))) continue;
+        const removals = [];
+        for (const cell of anchors) {
+          for (const digit of candidateMap.get(cell)) if (!digits.includes(digit)) removals.push({ cell, digit });
+        }
+        if (!removals.length) continue;
+        for (const { cell, digit } of removals) candidateMap.get(cell).delete(digit);
+        const name = SUBSET_NAMES[size];
+        record({ kind: 'elimination', strategy: name.hidden, indices: [...new Set(removals.map(({ cell }) => cell))], digits, related: anchors, explanation: `${unitName(unitIndex)}中，${digits.join('、')} 只出現在這 ${size} 格，形成隱性${name.label}；這些格可移除其他候選數。` });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function findFish(size) {
+    const orientations = [
+      { bases: ROWS, covers: COLS, baseLabel: '橫列', coverLabel: '直行' },
+      { bases: COLS, covers: ROWS, baseLabel: '直行', coverLabel: '橫列' }
+    ];
+    for (let digit = 1; digit <= 9; digit += 1) {
+      for (const orientation of orientations) {
+        const baseCandidates = orientation.bases.map((unit, index) => ({ index, positions: unit.filter((cell) => candidateMap.get(cell)?.has(digit)) }))
+          .filter(({ positions }) => positions.length >= 2 && positions.length <= size);
+        for (const selected of combinations(baseCandidates, size)) {
+          const coverIndexes = [...new Set(selected.flatMap(({ positions }) => positions.map((cell) => orientation.bases === ROWS ? cell % 9 : Math.floor(cell / 9))))];
+          if (coverIndexes.length !== size) continue;
+          const baseIndexes = selected.map(({ index }) => index);
+          const targets = coverIndexes.flatMap((cover) => orientation.covers[cover]).filter((cell) => {
+            const base = orientation.bases === ROWS ? Math.floor(cell / 9) : cell % 9;
+            return !baseIndexes.includes(base);
+          });
+          const related = selected.flatMap(({ positions }) => positions);
+          const label = size === 2 ? 'X-Wing' : size === 3 ? 'Swordfish' : 'Jellyfish';
+          if (eliminate(targets, digit, FISH_NAMES[size], `${label}：${digit} 在 ${size} 個${orientation.baseLabel}只落於相同的 ${size} 個${orientation.coverLabel}，因此可從其餘位置排除。`, related)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function findXYWing() {
+    const bivalue = [...candidateMap.entries()].filter(([, values]) => values.size === 2);
+    for (const [pivot, pivotValues] of bivalue) {
+      const pivotDigits = [...pivotValues];
+      const wings = bivalue.filter(([cell]) => PEERS[pivot].has(cell));
+      for (const [[left, leftValues], [right, rightValues]] of combinations(wings, 2)) {
+        const leftShared = pivotDigits.filter((digit) => leftValues.has(digit));
+        const rightShared = pivotDigits.filter((digit) => rightValues.has(digit));
+        if (leftShared.length !== 1 || rightShared.length !== 1 || leftShared[0] === rightShared[0]) continue;
+        const leftOuter = [...leftValues].filter((digit) => !pivotValues.has(digit));
+        const rightOuter = [...rightValues].filter((digit) => !pivotValues.has(digit));
+        if (leftOuter.length !== 1 || rightOuter.length !== 1 || leftOuter[0] !== rightOuter[0]) continue;
+        const digit = leftOuter[0];
+        const targets = [...PEERS[left]].filter((cell) => PEERS[right].has(cell) && cell !== pivot && candidateMap.get(cell)?.has(digit));
+        if (eliminate(targets, digit, 'xyWing', `XY-Wing：樞紐 ${cellName(pivot)} 與兩翼形成三組雙候選，不論樞紐取哪個值，兩翼共同可見格都不能是 ${digit}。`, [pivot, left, right])) return true;
+      }
+    }
+    return false;
+  }
+
   for (let guard = 0; guard < 500 && candidateMap.size; guard += 1) {
     const impossible = [...candidateMap.entries()].find(([, values]) => values.size === 0);
     if (impossible) return { solved: false, invalid: true, grid, steps, hardest };
+
+    let progressed = false;
+    for (let unitIndex = 0; unitIndex < UNITS.length; unitIndex += 1) {
+      const empties = UNITS[unitIndex].filter((index) => candidateMap.has(index));
+      if (empties.length !== 1) continue;
+      const index = empties[0];
+      const digit = [...candidateMap.get(index)][0];
+      place(index, digit, 'fullHouse', `${unitName(unitIndex)}只剩 ${cellName(index)} 未填，缺少的數字是 ${digit}。`, UNITS[unitIndex]);
+      progressed = true;
+      break;
+    }
+    if (progressed) continue;
 
     const naked = [...candidateMap.entries()].find(([, values]) => values.size === 1);
     if (naked) {
       const [index, values] = naked;
       const digit = [...values][0];
-      place(index, digit, 'single', `${cellName(index)} 的其他數字都已被同行、同列或同宮排除，所以只能填 ${digit}。`);
+      place(index, digit, 'nakedSingle', `${cellName(index)} 的其他數字都已被同行、同列或同宮排除，所以只能填 ${digit}。`);
       continue;
     }
 
-    let progressed = false;
     for (let unitIndex = 0; unitIndex < UNITS.length && !progressed; unitIndex += 1) {
       const unit = UNITS[unitIndex];
       for (let digit = 1; digit <= 9; digit += 1) {
         if (unit.some((index) => grid[index] === digit)) continue;
         const possible = unit.filter((index) => candidateMap.get(index)?.has(digit));
         if (possible.length === 1) {
-          place(possible[0], digit, 'hidden', `${unitName(unitIndex)}裡，只有 ${cellName(possible[0])} 還能放 ${digit}。`, unit);
+          place(possible[0], digit, 'hiddenSingle', `${unitName(unitIndex)}裡，只有 ${cellName(possible[0])} 還能放 ${digit}。`, unit);
           progressed = true;
           break;
         }
@@ -323,60 +456,75 @@ export function logicalSolve(source) {
         if (rows.size === 1) {
           const row = [...rows][0];
           const targets = ROWS[row].filter((index) => !box.includes(index));
-          progressed = eliminate(targets, digit, 'locked', `第 ${boxIndex + 1} 宮中的 ${digit} 都落在第 ${row + 1} 橫列，因此可從同列其他宮排除 ${digit}。`, anchors);
+          progressed = eliminate(targets, digit, 'lockedPointing', `指向型區塊排除：第 ${boxIndex + 1} 宮中的 ${digit} 都落在第 ${row + 1} 橫列，因此可從同列其他宮排除 ${digit}。`, anchors);
         } else if (cols.size === 1) {
           const col = [...cols][0];
           const targets = COLS[col].filter((index) => !box.includes(index));
-          progressed = eliminate(targets, digit, 'locked', `第 ${boxIndex + 1} 宮中的 ${digit} 都落在第 ${col + 1} 直行，因此可從同行其他宮排除 ${digit}。`, anchors);
+          progressed = eliminate(targets, digit, 'lockedPointing', `指向型區塊排除：第 ${boxIndex + 1} 宮中的 ${digit} 都落在第 ${col + 1} 直行，因此可從同行其他宮排除 ${digit}。`, anchors);
         }
         if (progressed) break;
       }
     }
     if (progressed) continue;
 
-    for (let unitIndex = 0; unitIndex < UNITS.length && !progressed; unitIndex += 1) {
-      const unit = UNITS[unitIndex];
-      const pairs = new Map();
-      for (const index of unit) {
-        const values = candidateMap.get(index);
-        if (values?.size !== 2) continue;
-        const key = [...values].sort().join('');
-        if (!pairs.has(key)) pairs.set(key, []);
-        pairs.get(key).push(index);
+    for (const lines of [ROWS, COLS]) {
+      for (let lineIndex = 0; lineIndex < lines.length && !progressed; lineIndex += 1) {
+        for (let digit = 1; digit <= 9; digit += 1) {
+          const anchors = lines[lineIndex].filter((index) => candidateMap.get(index)?.has(digit));
+          if (anchors.length < 2) continue;
+          const boxes = new Set(anchors.map((index) => Math.floor(index / 27) * 3 + Math.floor((index % 9) / 3)));
+          if (boxes.size !== 1) continue;
+          const boxIndex = [...boxes][0];
+          const targets = BOXES[boxIndex].filter((index) => !anchors.includes(index));
+          const lineLabel = lines === ROWS ? `第 ${lineIndex + 1} 橫列` : `第 ${lineIndex + 1} 直行`;
+          progressed = eliminate(targets, digit, 'lockedClaiming', `宣告型區塊排除：${lineLabel}中的 ${digit} 都落在第 ${boxIndex + 1} 宮，因此可從該宮其他格排除 ${digit}。`, anchors);
+          if (progressed) break;
+        }
       }
-      for (const [key, anchors] of pairs) {
-        if (anchors.length !== 2) continue;
-        const digits = [...key].map(Number);
-        const targets = unit.filter((index) => !anchors.includes(index));
-        const changed = [];
-        for (const digit of digits) {
-          for (const index of targets) if (candidateMap.get(index)?.delete(digit)) changed.push(index);
-        }
-        if (changed.length) {
-          record({ kind: 'elimination', strategy: 'pair', indices: [...new Set(changed)], digits, related: anchors, explanation: `${unitName(unitIndex)}中的兩格都只剩 ${digits.join('、')}，所以其他格可排除這兩個數。` });
-          progressed = true;
-          break;
-        }
+      if (progressed) break;
+    }
+    if (progressed) continue;
+
+    for (const size of [2, 3, 4]) {
+      if (findNakedSubset(size) || findHiddenSubset(size)) {
+        progressed = true;
+        break;
       }
     }
     if (progressed) continue;
+
+    if (findFish(2)) continue;
+    if (findXYWing()) continue;
+    if (findFish(3)) continue;
+    if (findFish(4)) continue;
 
     const solution = solveGrid(grid);
     if (!solution) return { solved: false, invalid: true, grid, steps, hardest };
     const [index] = [...candidateMap.entries()].sort((left, right) => left[1].size - right[1].size || left[0] - right[0])[0];
     const digit = solution[index];
-    place(index, digit, 'trial', `目前的四種基礎技巧不足以直接前進；進階分析試探 ${cellName(index)} 為 ${digit}，並檢查後續是否矛盾。`);
+    place(index, digit, 'search', `目前已實作的邏輯技巧不足以直接前進；搜尋驗證 ${cellName(index)} 為 ${digit}，並檢查後續是否矛盾。這不是教材中的邏輯技巧。`);
   }
 
   return { solved: isSolved(grid), invalid: false, grid, steps, hardest };
 }
 
 const RATING = {
-  single: { key: 'easy', label: '入門', summary: '主要使用唯一候選數。' },
-  hidden: { key: 'medium', label: '進階', summary: '需要找出隱藏在單位中的唯一位置。' },
-  locked: { key: 'hard', label: '挑戰', summary: '需要宮與行列之間的區塊排除。' },
-  pair: { key: 'hard', label: '挑戰', summary: '需要辨認顯性數對並排除候選數。' },
-  trial: { key: 'expert', label: '專家', summary: '基礎技巧後仍需進階試探或更高階策略。' }
+  fullHouse: { key: 'easy', label: '入門', summary: '以末格與唯一候選完成。' },
+  nakedSingle: { key: 'easy', label: '入門', summary: '主要使用格子的唯一候選。' },
+  hiddenSingle: { key: 'medium', label: '進階', summary: '需要找出單位中數字的唯一位置。' },
+  lockedPointing: { key: 'hard', label: '挑戰', summary: '需要宮與行列間的指向型區塊排除。' },
+  lockedClaiming: { key: 'hard', label: '挑戰', summary: '需要行列與宮間的宣告型區塊排除。' },
+  nakedPair: { key: 'hard', label: '挑戰', summary: '需要辨認顯性數對並排除候選數。' },
+  hiddenPair: { key: 'hard', label: '挑戰', summary: '需要辨認隱性數對並精簡候選數。' },
+  nakedTriple: { key: 'hard', label: '挑戰', summary: '需要使用三數組或四數組。' },
+  hiddenTriple: { key: 'hard', label: '挑戰', summary: '需要使用三數組或四數組。' },
+  nakedQuad: { key: 'hard', label: '挑戰', summary: '需要使用三數組或四數組。' },
+  hiddenQuad: { key: 'hard', label: '挑戰', summary: '需要使用三數組或四數組。' },
+  xWing: { key: 'expert', label: '專家', summary: '需要跨行列辨認 X-Wing 魚形。' },
+  xyWing: { key: 'expert', label: '專家', summary: '需要辨認雙候選樞紐與兩翼。' },
+  swordfish: { key: 'expert', label: '專家', summary: '需要跨三個單位辨認 Swordfish。' },
+  jellyfish: { key: 'expert', label: '專家', summary: '需要跨四個單位辨認 Jellyfish。' },
+  search: { key: 'expert', label: '專家+', summary: '目前的邏輯分析器仍需搜尋驗證；可再使用鏈或 ALS 等高階技巧分析。' }
 };
 
 export function analyzePuzzle(source) {
@@ -387,9 +535,9 @@ export function analyzePuzzle(source) {
   const solutionCount = countSolutions(source, 2);
   if (solutionCount !== 1) return { valid: solutionCount > 0, unique: false, solutionCount, clues, conflicts: [], steps: [], rating: null };
   const logical = logicalSolve(source);
-  const rating = RATING[logical.hardest] || RATING.trial;
+  const rating = RATING[logical.hardest] || RATING.search;
   const techniqueCounts = logical.steps.reduce((counts, step) => ({ ...counts, [step.strategy]: (counts[step.strategy] || 0) + 1 }), {});
-  return { valid: true, unique: true, solutionCount, clues, solution: logical.grid, steps: logical.steps, rating, techniqueCounts };
+  return { valid: true, unique: true, solutionCount, clues, solution: logical.grid, steps: logical.steps, rating, techniqueCounts, logicalOnly: !techniqueCounts.search };
 }
 
 export function nextHint(source) {
