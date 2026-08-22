@@ -22,7 +22,7 @@
       <button class="nav-item active" data-view="practice" type="button"><span>01</span>解題教室</button>
       <button class="nav-item" data-view="generator" type="button"><span>02</span>智慧出題</button>
       <button class="nav-item" data-view="analyzer" type="button"><span>03</span>題目分析</button>
-      <button class="nav-item" data-view="learn" type="button"><span>04</span>技巧圖鑑</button>
+      <button class="nav-item" data-view="learn" type="button"><span>04</span>學習旅程</button>
     </nav>
 
     <main>
@@ -98,13 +98,27 @@
       </section>
 
       <section id="learn-view" class="view">
-        <div class="section-heading compact"><div><p class="eyebrow">TECHNIQUE LIBRARY</p><h1>從看見一個數，<br>到看懂整個結構。</h1></div><p class="intro">依序掌握四個核心觀念。每張卡都說明「觀察什麼」與「為何成立」。</p></div>
-        <div class="technique-grid">
-          <article><span>01 · 基礎</span><div class="mini-grid single" aria-hidden="true"></div><h2>唯一候選數</h2><p>某一格的其他數字都被同行、同列或同宮排除，只剩一個可能。</p><b>找「格子只剩一個數」</b></article>
-          <article><span>02 · 基礎</span><div class="mini-grid hidden" aria-hidden="true"></div><h2>隱性單數</h2><p>在一個行、列或九宮內，某個數字只有一個位置可以放。</p><b>找「數字只剩一個家」</b></article>
-          <article><span>03 · 進階</span><div class="mini-grid locked" aria-hidden="true"></div><h2>區塊排除</h2><p>一個宮內某數的候選位置都落在同一行，就能從該行其他宮排除它。</p><b>讓宮與行列互相提供線索</b></article>
-          <article><span>04 · 進階</span><div class="mini-grid pair" aria-hidden="true"></div><h2>顯性數對</h2><p>同一單位有兩格都只剩相同兩個候選數，其他格就不能再使用它們。</p><b>用一對格子鎖定兩個數</b></article>
+        <div class="section-heading compact"><div><p class="eyebrow">COMPLETE LEARNING JOURNEY</p><h1>從盤面語言，<br>走到高階推理。</h1></div><p class="intro">六階段、34 個學習節點，包含先修概念、過關條件與本機歷程。標有「可辨識」的技巧，分析器會真的在題目中尋找。</p></div>
+        <div class="journey-dashboard">
+          <div class="journey-stat"><span>課程進度</span><strong id="lesson-progress">0 / 34</strong><div class="meter"><i id="lesson-progress-bar"></i></div></div>
+          <div class="journey-stat"><span>分析器能力</span><strong id="detector-count">15 種技巧</strong><small>另將搜尋驗證獨立標示</small></div>
+          <div class="journey-stat"><span>學習活動</span><strong id="activity-count">0 次</strong><small>只保存在這個瀏覽器</small></div>
         </div>
+        <section id="continue-card" class="continue-card" aria-live="polite"></section>
+        <div id="journey-stages" class="journey-stages"></div>
+        <section class="history-panel">
+          <div><p class="eyebrow">LEARNING HISTORY</p><h2>你的學習歷程</h2><p>記錄完成課程、提示使用、題目分析與解題完成；不會上傳。</p></div>
+          <ol id="learning-history" class="learning-history"></ol>
+        </section>
+        <aside class="sources-panel">
+          <div><p class="eyebrow">SOURCES · CHECKED 2026-08-22</p><h2>技巧分類依據</h2></div>
+          <p>學習順序交叉參考公開教材後重新編排；技巧名稱與難度並非全球唯一標準。</p>
+          <div class="source-links">
+            <a href="https://hodoku.sourceforge.net/en/techniques.php" target="_blank" rel="noreferrer">HoDoKu · 完整技巧分類 ↗</a>
+            <a href="https://www.sudokuwiki.org/Strategy_Families" target="_blank" rel="noreferrer">SudokuWiki · Strategy Families ↗</a>
+            <a href="https://www.conceptispuzzles.com/index.aspx?uri=puzzle/sudoku/techniques" target="_blank" rel="noreferrer">Conceptis · 掃描到 X-Wing ↗</a>
+          </div>
+        </aside>
       </section>
     </main>
     <footer><span>數織學堂 · 在本機思考，在每一步學習</span><span>無廣告 · 無登入 · 資料不離開裝置</span></footer>

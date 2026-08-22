@@ -11,16 +11,25 @@ import {
   serializeGrid,
   validateGrid
 } from './core/sudoku.js';
+import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TECHNIQUE_NAMES } from './learning/curriculum.js';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
 const coachContent = byId('coach-content');
 const toast = byId('toast');
-const strategyNames = { single: '唯一候選數', hidden: '隱性單數', locked: '區塊排除', pair: '顯性數對', trial: '進階試探' };
+const strategyNames = TECHNIQUE_NAMES;
 
 const storedProgress = (() => {
   try { return JSON.parse(localStorage.getItem('sudoku-learning-progress')) || {}; } catch { return {}; }
 })();
+
+const learningProfile = {
+  completedLessons: new Set(Array.isArray(storedProgress.completedLessons) ? storedProgress.completedLessons : []),
+  activities: Array.isArray(storedProgress.activities) ? storedProgress.activities.slice(0, 60) : [],
+  totalActivities: Number(storedProgress.totalActivities || storedProgress.activities?.length || 0),
+  hintsUsed: Number(storedProgress.hintsUsed || 0),
+  analysesRun: Number(storedProgress.analysesRun || 0)
+};
 
 const state = {
   record: null,
@@ -36,8 +45,30 @@ const state = {
   timerId: null,
   completed: false,
   solvedCount: Number(storedProgress.solvedCount || 0),
+  learning: learningProfile,
   generatorDifficulty: 'easy'
 };
+
+function persistProgress() {
+  localStorage.setItem('sudoku-learning-progress', JSON.stringify({
+    version: 2,
+    solvedCount: state.solvedCount,
+    completedLessons: [...state.learning.completedLessons],
+    activities: state.learning.activities,
+    totalActivities: state.learning.totalActivities,
+    hintsUsed: state.learning.hintsUsed,
+    analysesRun: state.learning.analysesRun,
+    updatedAt: new Date().toISOString()
+  }));
+}
+
+function recordActivity(type, detail) {
+  state.learning.activities.unshift({ type, detail, at: new Date().toISOString() });
+  state.learning.activities = state.learning.activities.slice(0, 60);
+  state.learning.totalActivities += 1;
+  persistProgress();
+  renderJourney();
+}
 
 function randomSeed() {
   const bytes = new Uint32Array(2);
@@ -147,7 +178,7 @@ function renderProgress() {
   const percent = total ? Math.max(0, Math.round((placed / total) * 100)) : 100;
   byId('completion-label').textContent = `${percent}%`;
   byId('completion-bar').style.width = `${percent}%`;
-  byId('solved-count').textContent = `${state.solvedCount} 題完成`;
+  byId('solved-count').textContent = `${state.solvedCount} 題 · ${state.learning.completedLessons.size}/${ALL_LESSONS.length} 技巧`;
 }
 
 function selectCell(index) {
@@ -236,7 +267,7 @@ function completePuzzle() {
   if (state.completed) return;
   state.completed = true;
   state.solvedCount += 1;
-  localStorage.setItem('sudoku-learning-progress', JSON.stringify({ solvedCount: state.solvedCount }));
+  recordActivity('puzzle', `完成「${state.record.difficultyLabel}」題目，用時 ${formatTime(state.elapsed)}`);
   setCoach('完成', '漂亮的推理！', `你用 ${formatTime(state.elapsed)} 完成這題。`, '完成後回想：是哪一個技巧讓盤面開始連鎖解開？');
   showToast('恭喜完成！學習紀錄已保存在這個裝置。', 'success');
   renderBoard();
@@ -255,6 +286,8 @@ function requestHint() {
     return;
   }
   state.hint = hint;
+  state.learning.hintsUsed += 1;
+  recordActivity('hint', `使用「${strategyNames[hint.strategy] || hint.strategy}」提示`);
   state.selected = hint.index;
   const setup = hint.setup.length ? `前置推理：${hint.setup.map((step) => strategyNames[step.strategy]).join('、')}。` : '';
   setCoach(`提示 · ${strategyNames[hint.strategy]}`, `${cellName(hint.index)}可以填 ${hint.digit}`, hint.explanation, setup || '先自己確認排除過程，再決定是否套用這一步。');
@@ -306,16 +339,19 @@ function loadPuzzle(record, title = '') {
 function switchView(name) {
   document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `${name}-view`));
   document.querySelectorAll('.nav-item').forEach((item) => item.classList.toggle('active', item.dataset.view === name));
+  if (name === 'learn') renderJourney();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function analysisMarkup(analysis) {
   if (!analysis.valid) return `<div class="analysis-error"><b>盤面不合法</b><p>${analysis.conflicts?.length ? `有 ${analysis.conflicts.length} 個互相衝突的格子。` : '這個盤面沒有可行解。'}</p></div>`;
   if (!analysis.unique) return `<div class="analysis-error"><b>不是唯一解題目</b><p>${analysis.solutionCount === 0 ? '找不到任何解。' : '至少存在兩個解，無法作為標準數獨題。'}</p></div>`;
-  const labels = { single: '唯一候選', hidden: '隱性單數', locked: '區塊排除', pair: '顯性數對', trial: '進階試探' };
-  const chips = Object.entries(analysis.techniqueCounts).map(([key, count]) => `<span>${labels[key]} <b>${count}</b></span>`).join('');
-  const steps = analysis.steps.slice(0, 8).map((step) => `<li><i>${String(step.number).padStart(2, '0')}</i><div><b>${labels[step.strategy]}</b><p>${step.explanation}</p></div></li>`).join('');
-  return `<div class="analysis-summary"><div><span>推定難度</span><b>${analysis.rating.label}</b></div><div><span>線索數</span><b>${analysis.clues}</b></div><div><span>解答</span><b>唯一解</b></div></div><p class="analysis-note">${analysis.rating.summary}</p><div class="technique-chips">${chips}</div><ol class="analysis-steps">${steps}</ol>${analysis.steps.length > 8 ? `<p class="more-steps">另有 ${analysis.steps.length - 8} 個步驟，這裡先顯示前 8 步。</p>` : ''}`;
+  const chips = Object.entries(analysis.techniqueCounts).map(([key, count]) => `<span>${strategyNames[key] || key} <b>${count}</b></span>`).join('');
+  const steps = analysis.steps.slice(0, 12).map((step) => `<li><i>${String(step.number).padStart(2, '0')}</i><div><b>${strategyNames[step.strategy] || step.strategy}</b><p>${step.explanation}</p></div></li>`).join('');
+  const boundary = analysis.logicalOnly
+    ? '<p class="analysis-boundary">這題可由目前 15 種已實作技巧完整解出，未使用搜尋。</p>'
+    : '<p class="analysis-boundary">報告含「搜尋驗證」：代表目前分析器尚未實作足夠的鏈、ALS 或其他高階邏輯，不把搜尋冒充技巧。</p>';
+  return `<div class="analysis-summary"><div><span>推定難度</span><b>${analysis.rating.label}</b></div><div><span>線索數</span><b>${analysis.clues}</b></div><div><span>解答</span><b>唯一解</b></div></div><p class="analysis-note">${analysis.rating.summary}</p>${boundary}<div class="technique-chips">${chips}</div><ol class="analysis-steps">${steps}</ol>${analysis.steps.length > 12 ? `<p class="more-steps">另有 ${analysis.steps.length - 12} 個步驟，這裡先顯示前 12 步。</p>` : ''}`;
 }
 
 function runAnalysis() {
@@ -326,15 +362,73 @@ function runAnalysis() {
     requestAnimationFrame(() => {
       const analysis = analyzePuzzle(puzzle);
       output.innerHTML = analysisMarkup(analysis);
+      state.learning.analysesRun += 1;
+      const detail = analysis.valid && analysis.unique ? `分析唯一解題目：${analysis.rating.label}` : '分析未通過唯一解條件的題目';
+      recordActivity('analysis', detail);
     });
   } catch (error) {
     output.innerHTML = `<div class="analysis-error"><b>無法讀取題目</b><p>${error.message}</p></div>`;
   }
 }
 
+function renderJourney() {
+  const container = byId('journey-stages');
+  if (!container) return;
+  const completed = state.learning.completedLessons;
+  const nextLesson = ALL_LESSONS.find((lesson) => !completed.has(lesson.id));
+  const percent = Math.round((completed.size / ALL_LESSONS.length) * 100);
+  byId('lesson-progress').textContent = `${completed.size} / ${ALL_LESSONS.length}`;
+  byId('lesson-progress-bar').style.width = `${percent}%`;
+  byId('detector-count').textContent = `${DETECTABLE_LESSONS.length} 種技巧`;
+  byId('activity-count').textContent = `${state.learning.totalActivities} 次`;
+
+  const continueCard = byId('continue-card');
+  if (nextLesson) {
+    continueCard.innerHTML = `<div><span>下一個學習節點 · ${nextLesson.stageTitle}</span><h2>${nextLesson.name}</h2><p>${nextLesson.summary} ${nextLesson.cue}</p></div><button type="button" data-lesson-toggle="${nextLesson.id}">完成這一節</button>`;
+  } else {
+    continueCard.innerHTML = '<div><span>旅程完成</span><h2>你已走完全部學習節點</h2><p>下一步是用不同題型反覆練習，並檢查自己能否說明每個排除理由。</p></div><button type="button" data-practice="expert">挑戰一題</button>';
+  }
+
+  container.innerHTML = JOURNEY_STAGES.map((stage) => {
+    const completedInStage = stage.lessons.filter((lesson) => completed.has(lesson.id)).length;
+    const lessons = stage.lessons.map((lesson, index) => {
+      const done = completed.has(lesson.id);
+      const detector = lesson.analyzer && lesson.analyzer !== 'search' ? '<span class="detector-badge">分析器可辨識</span>' : '<span class="detector-badge">教材涵蓋</span>';
+      const caution = lesson.caution ? '<span class="caution-badge">注意假設邊界</span>' : '';
+      return `<li class="lesson-item ${done ? 'done' : ''}"><span class="lesson-state">${done ? '✓' : String(index + 1).padStart(2, '0')}</span><div class="lesson-copy"><h3>${lesson.name}${detector}${caution}</h3><p>${lesson.summary}</p><small>觀察口訣：${lesson.cue}</small></div><button class="lesson-action" type="button" data-lesson-toggle="${lesson.id}">${done ? '取消完成' : '標記完成'}</button></li>`;
+    }).join('');
+    return `<section class="journey-stage"><header class="stage-heading"><span class="stage-number">${stage.number}</span><div class="stage-copy"><h2>${stage.title}</h2><p>${stage.description}</p></div><div class="stage-meta"><b>${stage.level} · ${completedInStage}/${stage.lessons.length}</b><small>${stage.gate}</small><button class="stage-practice" type="button" data-practice="${stage.difficulty}">練習此階段</button></div></header><ol class="lesson-list">${lessons}</ol><p class="stage-gate"><b>過關條件：</b>${stage.gate}</p></section>`;
+  }).join('');
+
+  const history = byId('learning-history');
+  history.innerHTML = state.learning.activities.length
+    ? state.learning.activities.slice(0, 12).map((event) => `<li><time datetime="${event.at}">${new Date(event.at).toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' })} ${new Date(event.at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}</time><span>${event.detail}</span></li>`).join('')
+    : '<li class="history-empty">尚無紀錄。完成課程、使用提示、分析或解完題目後會出現在這裡。</li>';
+
+  document.querySelectorAll('[data-lesson-toggle]').forEach((button) => button.addEventListener('click', () => {
+    const lesson = ALL_LESSONS.find((item) => item.id === button.dataset.lessonToggle);
+    if (!lesson) return;
+    if (completed.has(lesson.id)) {
+      completed.delete(lesson.id);
+      persistProgress();
+      renderJourney();
+    } else {
+      completed.add(lesson.id);
+      recordActivity('lesson', `完成課程「${lesson.name}」`);
+    }
+    renderProgress();
+  }));
+  document.querySelectorAll('[data-practice]').forEach((button) => button.addEventListener('click', () => {
+    state.generatorDifficulty = button.dataset.practice;
+    document.querySelectorAll('[data-difficulty]').forEach((item) => item.classList.toggle('selected', item.dataset.difficulty === state.generatorDifficulty));
+    switchView('generator');
+  }));
+}
+
 initializeBoard();
 loadPuzzle(generatePuzzle({ difficulty: 'easy', seed: 'WELCOME-001' }), '今日暖身題');
 byId('seed-input').value = randomSeed();
+renderJourney();
 
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
 document.querySelectorAll('[data-number]').forEach((button) => button.addEventListener('click', () => enterNumber(Number(button.dataset.number))));

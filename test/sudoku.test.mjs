@@ -13,6 +13,7 @@ import {
   solveGrid,
   validateGrid
 } from '../src/core/sudoku.js';
+import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES } from '../src/learning/curriculum.js';
 
 const classic = parsePuzzle('530070000600195000098000060800060003400803001700020006060000280000419005000080079');
 
@@ -81,4 +82,21 @@ test('analyzer distinguishes invalid and non-unique puzzles', () => {
   const analysis = analyzePuzzle(blank);
   assert.equal(analysis.unique, false);
   assert.equal(analysis.solutionCount, 2);
+});
+
+test('expanded analyzer reports advanced logic separately from search', () => {
+  const puzzle = generatePuzzle({ difficulty: 'expert', seed: 'CHECK' }).puzzle;
+  const analysis = analyzePuzzle(puzzle);
+  assert.ok(analysis.techniqueCounts.hiddenPair >= 1);
+  assert.ok(analysis.techniqueCounts.xWing >= 1);
+  assert.ok(analysis.techniqueCounts.search >= 1);
+  assert.equal(analysis.logicalOnly, false);
+});
+
+test('learning journey is complete, ordered and linked to detector coverage', () => {
+  assert.equal(JOURNEY_STAGES.length, 6);
+  assert.equal(ALL_LESSONS.length, 34);
+  assert.equal(DETECTABLE_LESSONS.length, 15);
+  assert.equal(new Set(ALL_LESSONS.map(({ id }) => id)).size, ALL_LESSONS.length);
+  assert.ok(JOURNEY_STAGES.every((stage) => stage.gate && stage.lessons.length >= 2));
 });
