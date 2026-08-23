@@ -78,6 +78,15 @@ export function isSolved(grid) {
   return grid.every(Boolean) && validateGrid(grid).valid;
 }
 
+export function getCompletedDigits(grid, solution = null) {
+  assertGrid(grid);
+  if (solution) assertGrid(solution);
+  return Array.from({ length: 9 }, (_, index) => index + 1).filter((digit) => {
+    const positions = grid.map((value, index) => value === digit ? index : -1).filter((index) => index >= 0);
+    return positions.length === 9 && (!solution || positions.every((index) => solution[index] === digit));
+  });
+}
+
 function makeMasks(grid) {
   const rows = Array(9).fill(0);
   const cols = Array(9).fill(0);

@@ -6,6 +6,7 @@ import {
   countSolutions,
   generatePuzzle,
   generateSolution,
+  getCompletedDigits,
   isSolved,
   nextHint,
   parsePuzzle,
@@ -14,6 +15,7 @@ import {
   validateGrid
 } from '../src/core/sudoku.js';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES } from '../src/learning/curriculum.js';
+import { TECHNIQUE_DRILLS } from '../src/learning/drills.js';
 
 const classic = parsePuzzle('530070000600195000098000060800060003400803001700020006060000280000419005000080079');
 
@@ -99,4 +101,27 @@ test('learning journey is complete, ordered and linked to detector coverage', ()
   assert.equal(DETECTABLE_LESSONS.length, 15);
   assert.equal(new Set(ALL_LESSONS.map(({ id }) => id)).size, ALL_LESSONS.length);
   assert.ok(JOURNEY_STAGES.every((stage) => stage.gate && stage.lessons.length >= 2));
+});
+
+test('completed digits require all nine correct placements', () => {
+  const solution = solveGrid(classic);
+  const partial = Array(81).fill(0);
+  solution.forEach((value, index) => { if (value === 1) partial[index] = value; });
+  assert.deepEqual(getCompletedDigits(partial, solution), [1]);
+  const wrong = [...partial];
+  wrong[solution.indexOf(1)] = 0;
+  wrong[solution.findIndex((value) => value === 2)] = 1;
+  assert.deepEqual(getCompletedDigits(wrong, solution), []);
+});
+
+test('every detectable technique has a verified dedicated drill', () => {
+  assert.equal(TECHNIQUE_DRILLS.length, DETECTABLE_LESSONS.length);
+  assert.equal(new Set(TECHNIQUE_DRILLS.map(({ technique }) => technique)).size, TECHNIQUE_DRILLS.length);
+  for (const drill of TECHNIQUE_DRILLS) {
+    const lesson = DETECTABLE_LESSONS.find(({ analyzer }) => analyzer === drill.technique);
+    const analysis = analyzePuzzle(parsePuzzle(drill.puzzle));
+    assert.ok(lesson, `${drill.technique} should map to a detectable lesson`);
+    assert.equal(analysis.valid && analysis.unique, true, `${drill.technique} drill should have one solution`);
+    assert.ok(analysis.techniqueCounts[drill.technique] >= 1, `${drill.technique} should occur in its drill`);
+  }
 });
