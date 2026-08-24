@@ -11,12 +11,12 @@ import {
   parsePuzzle,
   serializeGrid,
   validateGrid
-} from './core/sudoku.js';
-import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TECHNIQUE_NAMES } from './learning/curriculum.js';
-import { DRILL_BY_TECHNIQUE } from './learning/drills.js';
-import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js';
-import { getTutorial } from './learning/tutorials.js';
-import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js';
+} from './core/sudoku.js?v=20260824-learning2';
+import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-learning2';
+import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-learning2';
+import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-learning2';
+import { getTutorial } from './learning/tutorials.js?v=20260824-learning2';
+import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260824-learning2';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');

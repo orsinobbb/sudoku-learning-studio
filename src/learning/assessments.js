@@ -1,5 +1,5 @@
-import { cellName, logicalSolve, parsePuzzle, serializeGrid } from '../core/sudoku.js';
-import { DRILL_BY_TECHNIQUE } from './drills.js';
+import { cellName, logicalSolve, parsePuzzle, serializeGrid } from '../core/sudoku.js?v=20260824-learning2';
+import { DRILL_BY_TECHNIQUE } from './drills.js?v=20260824-learning2';
 
 const TRANSFORMS = [
   { id: 'original', label: '原始盤面', map: (row, col) => [row, col], shift: 0 },
