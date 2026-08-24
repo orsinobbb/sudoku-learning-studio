@@ -1,3 +1,5 @@
+import { findAdvancedMoves } from './advanced-techniques.js?v=20260824-advanced1';
+
 export const SIZE = 9;
 export const CELL_COUNT = 81;
 
@@ -290,7 +292,7 @@ const SUBSET_NAMES = {
 
 const FISH_NAMES = { 2: 'xWing', 3: 'swordfish', 4: 'jellyfish' };
 
-export function logicalSolve(source, { includeSnapshots = false, stopAfterFirst = false, excludedActions = [], allowSearch = true } = {}) {
+export function logicalSolve(source, { includeSnapshots = false, stopAfterFirst = false, excludedActions = [], allowSearch = true, allowUniqueness = false, allowAdvanced = true } = {}) {
   assertGrid(source);
   const initialValidation = validateGrid(source);
   if (!initialValidation.valid) return { solved: false, invalid: true, grid: [...source], steps: [], hardest: 'invalid' };
@@ -304,7 +306,10 @@ export function logicalSolve(source, { includeSnapshots = false, stopAfterFirst 
     lockedPointing: 3, lockedClaiming: 3,
     nakedPair: 4, hiddenPair: 4,
     nakedTriple: 5, hiddenTriple: 5, nakedQuad: 5, hiddenQuad: 5,
-    xWing: 6, xyWing: 7, swordfish: 7, jellyfish: 8, search: 9
+    xWing: 6, skyscraper: 7, kite: 7, emptyRectangle: 7, xyWing: 7, swordfish: 7,
+    xyzWing: 8, wWing: 8, jellyfish: 8, simpleColoring: 9, xChain: 9,
+    xyChain: 10, aic: 10, finnedFish: 10, als: 11, sueDeCoq: 11,
+    uniqueRectangle: 12, bugPlusOne: 12, forcingChain: 13, search: 14
   };
 
   function record(step) {
@@ -377,6 +382,34 @@ export function logicalSolve(source, { includeSnapshots = false, stopAfterFirst 
       ...(snapshot ? { snapshot } : {})
     });
     return changed.length > 0;
+  }
+
+  function applyAdvanced(step) {
+    if (!step) return false;
+    if (step.kind === 'placement') return place(step.index, step.digit, step.strategy, step.explanation, step.related);
+    const snapshot = snapshotState();
+    const eliminations = step.eliminations.filter(({ index, digit }) => candidateMap.get(index)?.has(digit));
+    const actionKey = eliminationKey(eliminations);
+    if (!eliminations.length || excluded.has(actionKey)) return false;
+    for (const { index, digit } of eliminations) candidateMap.get(index)?.delete(digit);
+    record({
+      ...step,
+      indices: [...new Set(eliminations.map(({ index }) => index))],
+      eliminations,
+      actionKey,
+      ...(snapshot ? { snapshot } : {})
+    });
+    return true;
+  }
+
+  function tryAdvanced(techniques) {
+    if (!allowAdvanced) return false;
+    const [advanced] = findAdvancedMoves(
+      grid,
+      Array.from({ length: 81 }, (_, index) => [...(candidateMap.get(index) || [])]),
+      { techniques, limit: 1, allowUniqueness, excludedActions }
+    );
+    return applyAdvanced(advanced);
   }
 
   function findNakedSubset(size) {
@@ -562,9 +595,12 @@ export function logicalSolve(source, { includeSnapshots = false, stopAfterFirst 
     if (progressed) continue;
 
     if (findFish(2)) continue;
+    if (tryAdvanced(['skyscraper', 'kite', 'emptyRectangle'])) continue;
     if (findXYWing()) continue;
     if (findFish(3)) continue;
+    if (tryAdvanced(['xyzWing', 'wWing'])) continue;
     if (findFish(4)) continue;
+    if (tryAdvanced(['simpleColoring', 'xChain', 'xyChain', 'aic', 'finnedFish', 'als', 'sueDeCoq', 'uniqueRectangle', 'bugPlusOne', 'forcingChain'])) continue;
 
     if (!allowSearch) break;
     const solution = solveGrid(grid);
@@ -593,17 +629,32 @@ const RATING = {
   xyWing: { key: 'expert', label: '專家', summary: '需要辨認雙候選樞紐與兩翼。' },
   swordfish: { key: 'expert', label: '專家', summary: '需要跨三個單位辨認 Swordfish。' },
   jellyfish: { key: 'expert', label: '專家', summary: '需要跨四個單位辨認 Jellyfish。' },
-  search: { key: 'expert', label: '專家+', summary: '目前的邏輯分析器仍需搜尋驗證；可再使用鏈或 ALS 等高階技巧分析。' }
+  skyscraper: { key: 'expert', label: '專家', summary: '需要辨認 Skyscraper 強連結圖形。' },
+  kite: { key: 'expert', label: '專家', summary: '需要辨認行列強連結構成的 2-String Kite。' },
+  emptyRectangle: { key: 'expert', label: '專家', summary: '需要辨認宮內 Empty Rectangle 與外部強連結。' },
+  xyzWing: { key: 'expert', label: '專家', summary: '需要辨認 XYZ-Wing 的三格共同可見候選。' },
+  wWing: { key: 'expert', label: '專家', summary: '需要以強連結接通兩個相同雙候選格。' },
+  simpleColoring: { key: 'expert', label: '專家', summary: '需要沿強連結著色並辨認陷阱或矛盾。' },
+  xChain: { key: 'expert', label: '專家', summary: '需要追蹤單一數字的強弱交替鏈。' },
+  xyChain: { key: 'expert', label: '專家', summary: '需要追蹤雙候選格形成的 XY-Chain。' },
+  aic: { key: 'expert', label: '專家+', summary: '需要分析候選節點間的交替推理鏈。' },
+  finnedFish: { key: 'expert', label: '專家+', summary: '需要辨認帶鰭魚形及其限制宮。' },
+  als: { key: 'expert', label: '專家+', summary: '需要辨認 ALS-XZ 的受限共同候選。' },
+  sueDeCoq: { key: 'expert', label: '專家+', summary: '需要拆解宮與行列交界的候選集合。' },
+  uniqueRectangle: { key: 'expert', label: '專家+', summary: '在唯一解前提下使用唯一矩形。' },
+  bugPlusOne: { key: 'expert', label: '專家+', summary: '在唯一解前提下辨認 BUG+1 末盤。' },
+  forcingChain: { key: 'expert', label: '專家+', summary: '需要比較分支並找出共同結論。' },
+  search: { key: 'expert', label: '專家+', summary: '目前可辨識的邏輯技巧仍不足，需以搜尋驗證。' }
 };
 
-export function analyzePuzzle(source) {
+export function analyzePuzzle(source, { allowAdvanced = true } = {}) {
   assertGrid(source);
   const validation = validateGrid(source);
   const clues = source.filter(Boolean).length;
   if (!validation.valid) return { valid: false, unique: false, solutionCount: 0, clues, conflicts: validation.conflicts, steps: [], rating: null };
   const solutionCount = countSolutions(source, 2);
   if (solutionCount !== 1) return { valid: solutionCount > 0, unique: false, solutionCount, clues, conflicts: [], steps: [], rating: null };
-  const logical = logicalSolve(source);
+  const logical = logicalSolve(source, { allowUniqueness: true, allowAdvanced });
   const rating = RATING[logical.hardest] || RATING.search;
   const techniqueCounts = logical.steps.reduce((counts, step) => ({ ...counts, [step.strategy]: (counts[step.strategy] || 0) + 1 }), {});
   return { valid: true, unique: true, solutionCount, clues, solution: logical.grid, steps: logical.steps, rating, techniqueCounts, logicalOnly: !techniqueCounts.search };
@@ -616,10 +667,11 @@ export function suggestNextMoves(source, { limit = 3 } = {}) {
   if (isSolved(source)) return { status: 'solved', suggestions: [] };
 
   const targetCount = Math.max(1, Math.min(3, Math.floor(Number(limit) || 3)));
+  const allowUniqueness = countSolutions(source, 2) === 1;
   const excludedActions = [];
   const suggestions = [];
   while (suggestions.length < targetCount) {
-    const analysis = logicalSolve(source, { stopAfterFirst: true, excludedActions, allowSearch: false });
+    const analysis = logicalSolve(source, { stopAfterFirst: true, excludedActions, allowSearch: false, allowUniqueness });
     const suggestion = analysis.steps[0];
     if (!suggestion?.actionKey) break;
     suggestions.push(suggestion);
@@ -629,7 +681,7 @@ export function suggestNextMoves(source, { limit = 3 } = {}) {
 }
 
 export function nextHint(source) {
-  const analysis = logicalSolve(source);
+  const analysis = logicalSolve(source, { allowUniqueness: countSolutions(source, 2) === 1 });
   const placementIndex = analysis.steps.findIndex((step) => step.kind === 'placement');
   if (placementIndex < 0) return null;
   const step = analysis.steps[placementIndex];

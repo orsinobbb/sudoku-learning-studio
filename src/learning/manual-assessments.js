@@ -1,4 +1,4 @@
-import { candidatesFor, cellName } from '../core/sudoku.js?v=20260824-learning6';
+import { candidatesFor, cellName } from '../core/sudoku.js?v=20260824-advanced1';
 
 const CLUE_TARGET = 30;
 

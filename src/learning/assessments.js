@@ -1,6 +1,6 @@
-import { cellName, logicalSolve, parsePuzzle, serializeGrid } from '../core/sudoku.js?v=20260824-learning6';
-import { DRILL_BY_TECHNIQUE } from './drills.js?v=20260824-learning6';
-import { getManualTechniqueQuestions } from './manual-assessments.js?v=20260824-learning6';
+import { cellName, logicalSolve, parsePuzzle, serializeGrid } from '../core/sudoku.js?v=20260824-advanced1';
+import { DRILL_BY_TECHNIQUE } from './drills.js?v=20260824-advanced1';
+import { getManualTechniqueQuestions } from './manual-assessments.js?v=20260824-advanced1';
 
 const TRANSFORMS = [
   { id: 'original', label: '原始盤面', map: (row, col) => [row, col], shift: 0 },
@@ -80,7 +80,7 @@ export function getTechniqueQuestions(technique, count = 3) {
   const seenBoards = new Set();
   for (const transform of TRANSFORMS) {
     const puzzle = transformPuzzle(drill.puzzle, transform);
-    const trace = logicalSolve(puzzle, { includeSnapshots: true });
+    const trace = logicalSolve(puzzle, { includeSnapshots: true, allowAdvanced: false });
     const step = trace.steps.find((item) => item.strategy === technique && item.snapshot);
     const question = step ? buildQuestion(technique, transform, step, questions.length) : null;
     if (!question || seenBoards.has(question.boardKey)) continue;

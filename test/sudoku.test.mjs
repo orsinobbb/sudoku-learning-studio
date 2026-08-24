@@ -16,6 +16,7 @@ import {
   suggestNextMoves,
   validateGrid
 } from '../src/core/sudoku.js';
+import { ADVANCED_TECHNIQUE_ORDER, findAdvancedMoves } from '../src/core/advanced-techniques.js';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS } from '../src/learning/curriculum.js';
 import { TECHNIQUE_DRILLS } from '../src/learning/drills.js';
 import { evaluateTechniqueAnswer, getTechniqueQuestions } from '../src/learning/assessments.js';
@@ -133,7 +134,7 @@ test('analyzer distinguishes invalid and non-unique puzzles', () => {
 
 test('expanded analyzer reports advanced logic separately from search', () => {
   const puzzle = generatePuzzle({ difficulty: 'expert', seed: 'CHECK' }).puzzle;
-  const analysis = analyzePuzzle(puzzle);
+  const analysis = analyzePuzzle(puzzle, { allowAdvanced: false });
   assert.ok(analysis.techniqueCounts.hiddenPair >= 1);
   assert.ok(analysis.techniqueCounts.xWing >= 1);
   assert.ok(analysis.techniqueCounts.search >= 1);
@@ -143,7 +144,7 @@ test('expanded analyzer reports advanced logic separately from search', () => {
 test('learning journey is complete, ordered and linked to detector coverage', () => {
   assert.equal(JOURNEY_STAGES.length, 6);
   assert.equal(ALL_LESSONS.length, 34);
-  assert.equal(DETECTABLE_LESSONS.length, 15);
+  assert.equal(DETECTABLE_LESSONS.length, 30);
   assert.equal(TARGETED_LESSONS.length, 31);
   assert.equal(new Set(ALL_LESSONS.map(({ id }) => id)).size, ALL_LESSONS.length);
   assert.ok(JOURNEY_STAGES.every((stage) => stage.gate && stage.lessons.length >= 2));
@@ -161,14 +162,31 @@ test('completed digits require all nine correct placements', () => {
 });
 
 test('every detectable technique has a verified dedicated drill', () => {
-  assert.equal(TECHNIQUE_DRILLS.length, DETECTABLE_LESSONS.length);
   assert.equal(new Set(TECHNIQUE_DRILLS.map(({ technique }) => technique)).size, TECHNIQUE_DRILLS.length);
+  for (const lesson of DETECTABLE_LESSONS) {
+    assert.ok(TECHNIQUE_DRILLS.some(({ technique }) => technique === lesson.analyzer) || lesson.assessment, `${lesson.analyzer} should have a full-board drill or verified candidate-state assessment`);
+  }
   for (const drill of TECHNIQUE_DRILLS) {
     const lesson = DETECTABLE_LESSONS.find(({ analyzer }) => analyzer === drill.technique);
-    const analysis = analyzePuzzle(parsePuzzle(drill.puzzle));
+    const analysis = analyzePuzzle(parsePuzzle(drill.puzzle), { allowAdvanced: false });
     assert.ok(lesson, `${drill.technique} should map to a detectable lesson`);
     assert.equal(analysis.valid && analysis.unique, true, `${drill.technique} drill should have one solution`);
     assert.ok(analysis.techniqueCounts[drill.technique] >= 1, `${drill.technique} should occur in its drill`);
+  }
+});
+
+test('all 15 advanced analyzers solve their verified target-position states', () => {
+  assert.equal(ADVANCED_TECHNIQUE_ORDER.length, 15);
+  for (const technique of ADVANCED_TECHNIQUE_ORDER) {
+    for (const question of getTechniqueQuestions(technique, 3)) {
+      const moves = findAdvancedMoves(question.board, question.candidates, { techniques: [technique], limit: 1, allowUniqueness: true, targetIndex: question.answers[0].index });
+      const move = moves[0];
+      const matches = question.answers.some((answer) => move?.kind === 'placement'
+        ? move.index === answer.index && move.digit === answer.digit
+        : move?.eliminations?.some(({ index, digit }) => index === answer.index && digit === answer.digit));
+      assert.equal(matches, true, `${technique} ${question.variantLabel} should identify its verified answer`);
+      assert.match(move.explanation, /。/);
+    }
   }
 });
 

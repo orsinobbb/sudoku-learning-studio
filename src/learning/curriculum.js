@@ -14,6 +14,21 @@ export const TECHNIQUE_NAMES = {
   xyWing: 'XY-Wing',
   swordfish: 'Swordfish',
   jellyfish: 'Jellyfish',
+  skyscraper: 'Skyscraper',
+  kite: '2-String Kite',
+  emptyRectangle: 'Empty Rectangle',
+  xyzWing: 'XYZ-Wing',
+  wWing: 'W-Wing',
+  simpleColoring: '簡單著色',
+  xChain: 'X-Chain',
+  xyChain: 'XY-Chain',
+  aic: 'AIC 交替推理鏈',
+  als: 'ALS／ALS-XZ',
+  sueDeCoq: 'Sue de Coq',
+  finnedFish: 'Finned／Sashimi Fish',
+  uniqueRectangle: '唯一矩形',
+  bugPlusOne: 'BUG+1',
+  forcingChain: '強制鏈與強制網',
   search: '搜尋驗證（非邏輯技巧）'
 };
 
@@ -61,9 +76,9 @@ export const JOURNEY_STAGES = [
       { id: 'xWing', name: 'X-Wing', analyzer: 'xWing', summary: '兩條基底線的候選落在相同兩條覆蓋線。', cue: '2 條線 × 2 個位置。' },
       { id: 'swordfish', name: 'Swordfish', analyzer: 'swordfish', summary: '三條基底線的候選聯集落在三條覆蓋線。', cue: '不是每條都必須剛好兩個候選。' },
       { id: 'jellyfish', name: 'Jellyfish', analyzer: 'jellyfish', summary: '四條基底線鎖定四條覆蓋線。', cue: '先熟練 X-Wing 再擴張。' },
-      { id: 'skyscraper', name: 'Skyscraper', assessment: 'skyscraper', summary: '兩組強連結共享一端方向，另一端共同可見處可排除。', cue: '找同一數字的兩條雙候選線。' },
-      { id: 'kite', name: '2-String Kite', assessment: 'kite', summary: '一個行強連結與一個列強連結透過同宮相接。', cue: '行、列各一條強連結。' },
-      { id: 'emptyRectangle', name: 'Empty Rectangle', assessment: 'emptyRectangle', summary: '利用宮內候選的特殊分布串接行列強連結。', cue: '先辨認宮內的 L 形候選。' }
+      { id: 'skyscraper', name: 'Skyscraper', analyzer: 'skyscraper', assessment: 'skyscraper', summary: '兩組強連結共享一端方向，另一端共同可見處可排除。', cue: '找同一數字的兩條雙候選線。' },
+      { id: 'kite', name: '2-String Kite', analyzer: 'kite', assessment: 'kite', summary: '一個行強連結與一個列強連結透過同宮相接。', cue: '行、列各一條強連結。' },
+      { id: 'emptyRectangle', name: 'Empty Rectangle', analyzer: 'emptyRectangle', assessment: 'emptyRectangle', summary: '利用宮內候選的特殊分布串接行列強連結。', cue: '先辨認宮內的 L 形候選。' }
     ]
   },
   {
@@ -72,12 +87,12 @@ export const JOURNEY_STAGES = [
     gate: '每個鏈結都能標明「至少一真」或「不能同真」。',
     lessons: [
       { id: 'xyWing', name: 'XY-Wing', analyzer: 'xyWing', summary: '一個 XY 樞紐連接 XZ、YZ 兩翼，排除共同可見的 Z。', cue: '三格、三數、每格雙候選。' },
-      { id: 'xyzWing', name: 'XYZ-Wing', assessment: 'xyzWing', summary: 'XYZ 樞紐連接 XZ、YZ 兩翼，排除三格共同可見的 Z。', cue: '樞紐是三候選格。' },
-      { id: 'wWing', name: 'W-Wing', assessment: 'wWing', summary: '兩個相同雙候選格，透過其中一數的強連結排除另一數。', cue: '兩翼不必互相看見。' },
-      { id: 'simpleColoring', name: '簡單著色', assessment: 'simpleColoring', summary: '沿同一數字的強連結交替著色，利用矛盾或陷阱排除。', cue: '全程只追一個數。' },
-      { id: 'xChain', name: 'X-Chain', assessment: 'xChain', summary: '同一數字的強弱連結交替構成推理。', cue: '先寫清楚每條連結類型。' },
-      { id: 'xyChain', name: 'XY-Chain', assessment: 'xyChain', summary: '雙候選格串鏈，兩端共同可見處排除共同數。', cue: '每一格承接前一格的一個候選。' },
-      { id: 'aic', name: 'AIC 交替推理鏈', assessment: 'aic', summary: '以強弱連結交替表達更一般的鏈與環。', cue: '翼、著色與多種鏈可統一到 AIC。' }
+      { id: 'xyzWing', name: 'XYZ-Wing', analyzer: 'xyzWing', assessment: 'xyzWing', summary: 'XYZ 樞紐連接 XZ、YZ 兩翼，排除三格共同可見的 Z。', cue: '樞紐是三候選格。' },
+      { id: 'wWing', name: 'W-Wing', analyzer: 'wWing', assessment: 'wWing', summary: '兩個相同雙候選格，透過其中一數的強連結排除另一數。', cue: '兩翼不必互相看見。' },
+      { id: 'simpleColoring', name: '簡單著色', analyzer: 'simpleColoring', assessment: 'simpleColoring', summary: '沿同一數字的強連結交替著色，利用矛盾或陷阱排除。', cue: '全程只追一個數。' },
+      { id: 'xChain', name: 'X-Chain', analyzer: 'xChain', assessment: 'xChain', summary: '同一數字的強弱連結交替構成推理。', cue: '先寫清楚每條連結類型。' },
+      { id: 'xyChain', name: 'XY-Chain', analyzer: 'xyChain', assessment: 'xyChain', summary: '雙候選格串鏈，兩端共同可見處排除共同數。', cue: '每一格承接前一格的一個候選。' },
+      { id: 'aic', name: 'AIC 交替推理鏈', analyzer: 'aic', assessment: 'aic', summary: '以強弱連結交替表達更一般的鏈與環。', cue: '翼、著色與多種鏈可統一到 AIC。' }
     ]
   },
   {
@@ -85,12 +100,12 @@ export const JOURNEY_STAGES = [
     description: '處理近鎖定集合、唯一性假設與分支推理；重點是清楚寫出假設邊界。',
     gate: '能區分純邏輯、唯一解假設與搜尋驗證。',
     lessons: [
-      { id: 'als', name: 'ALS／ALS-XZ', assessment: 'als', summary: 'n 格含 n+1 個候選，透過受限共同候選連接集合。', cue: '先辨認「差一個就鎖定」的集合。' },
-      { id: 'sueDeCoq', name: 'Sue de Coq', assessment: 'sueDeCoq', summary: '結合宮與行列交界的多個候選集合進行排除。', cue: '先拆成交界與兩側集合。' },
-      { id: 'finnedFish', name: 'Finned／Sashimi Fish', assessment: 'finnedFish', summary: '基本魚形多出鰭候選後，在受限制區域排除。', cue: '先確認對應的基本魚形。' },
-      { id: 'uniqueRectangle', name: '唯一矩形', assessment: 'uniqueRectangle', summary: '利用題目唯一解假設避免形成雙解矩形。', cue: '這不是只靠數獨基本規則的推論。', caution: true },
-      { id: 'bugPlusOne', name: 'BUG+1', assessment: 'bugPlusOne', summary: '接近所有格皆雙候選時，以唯一性條件處理多出的候選。', cue: '必須先確認 BUG 結構。', caution: true },
-      { id: 'forcingChain', name: '強制鏈與強制網', assessment: 'forcingChain', summary: '分別檢查候選真假分支，找出所有分支共同結論。', cue: '保留分支證據，不把試填包裝成直覺。' },
+      { id: 'als', name: 'ALS／ALS-XZ', analyzer: 'als', assessment: 'als', summary: 'n 格含 n+1 個候選，透過受限共同候選連接集合。', cue: '先辨認「差一個就鎖定」的集合。' },
+      { id: 'sueDeCoq', name: 'Sue de Coq', analyzer: 'sueDeCoq', assessment: 'sueDeCoq', summary: '結合宮與行列交界的多個候選集合進行排除。', cue: '先拆成交界與兩側集合。' },
+      { id: 'finnedFish', name: 'Finned／Sashimi Fish', analyzer: 'finnedFish', assessment: 'finnedFish', summary: '基本魚形多出鰭候選後，在受限制區域排除。', cue: '先確認對應的基本魚形。' },
+      { id: 'uniqueRectangle', name: '唯一矩形', analyzer: 'uniqueRectangle', assessment: 'uniqueRectangle', summary: '利用題目唯一解假設避免形成雙解矩形。', cue: '這不是只靠數獨基本規則的推論。', caution: true },
+      { id: 'bugPlusOne', name: 'BUG+1', analyzer: 'bugPlusOne', assessment: 'bugPlusOne', summary: '接近所有格皆雙候選時，以唯一性條件處理多出的候選。', cue: '必須先確認 BUG 結構。', caution: true },
+      { id: 'forcingChain', name: '強制鏈與強制網', analyzer: 'forcingChain', assessment: 'forcingChain', summary: '分別檢查候選真假分支，找出所有分支共同結論。', cue: '保留分支證據，不把試填包裝成直覺。' },
       { id: 'search', name: '搜尋驗證與回溯', analyzer: 'search', assessment: 'search', summary: '當已實作邏輯不足時驗證解；它是求解保底，不是學習技巧。', cue: '分析報告會明確標示，不混入技巧統計。', caution: true }
     ]
   }

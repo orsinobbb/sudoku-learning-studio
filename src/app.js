@@ -12,12 +12,12 @@ import {
   parsePuzzle,
   serializeGrid,
   validateGrid
-} from './core/sudoku.js?v=20260824-notes1';
-import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-notes1';
-import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-notes1';
-import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-notes1';
-import { getTutorial } from './learning/tutorials.js?v=20260824-notes1';
-import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260824-notes1';
+} from './core/sudoku.js?v=20260824-advanced1';
+import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-advanced1';
+import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-advanced1';
+import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-advanced1';
+import { getTutorial } from './learning/tutorials.js?v=20260824-advanced1';
+import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260824-advanced1';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
@@ -545,7 +545,7 @@ function startTechniqueDrill(technique) {
   const lesson = ALL_LESSONS.find((item) => item.analyzer === technique);
   if (!drill || !lesson) return;
   const puzzle = parsePuzzle(drill.puzzle);
-  const analysis = analyzePuzzle(puzzle);
+  const analysis = analyzePuzzle(puzzle, { allowAdvanced: false });
   if (!analysis.valid || !analysis.unique || !analysis.techniqueCounts[technique]) {
     showToast('這份專項題校驗失敗，請稍後再試。', 'warning');
     return;
@@ -578,8 +578,8 @@ function analysisMarkup(analysis) {
   const chips = Object.entries(analysis.techniqueCounts).map(([key, count]) => `<span>${strategyNames[key] || key} <b>${count}</b></span>`).join('');
   const steps = analysis.steps.slice(0, 12).map((step) => `<li><i>${String(step.number).padStart(2, '0')}</i><div><b>${strategyNames[step.strategy] || step.strategy}</b><p>${step.explanation}</p></div></li>`).join('');
   const boundary = analysis.logicalOnly
-    ? '<p class="analysis-boundary">這題可由目前 15 種已實作技巧完整解出，未使用搜尋。</p>'
-    : '<p class="analysis-boundary">報告含「搜尋驗證」：代表目前分析器尚未實作足夠的鏈、ALS 或其他高階邏輯，不把搜尋冒充技巧。</p>';
+    ? '<p class="analysis-boundary">這題可由目前 30 種已實作技巧完整解出，未使用搜尋。</p>'
+    : '<p class="analysis-boundary">報告含「搜尋驗證」：代表 30 種邏輯技巧仍不足以完整解題；搜尋只驗證答案，不會冒充技巧。</p>';
   return `<div class="analysis-summary"><div><span>推定難度</span><b>${analysis.rating.label}</b></div><div><span>線索數</span><b>${analysis.clues}</b></div><div><span>解答</span><b>唯一解</b></div></div><p class="analysis-note">${analysis.rating.summary}</p>${boundary}<div class="technique-chips">${chips}</div><ol class="analysis-steps">${steps}</ol>${analysis.steps.length > 12 ? `<p class="more-steps">另有 ${analysis.steps.length - 12} 個步驟，這裡先顯示前 12 步。</p>` : ''}`;
 }
 
@@ -661,7 +661,7 @@ function renderLessonWorkbench() {
   const questions = technique ? getTechniqueQuestions(technique, 3) : [];
   const question = questions[active.questionIndex] || null;
   const checkMarkup = `<div class="knowledge-check"><span>理解檢核</span><h3>${content.check.prompt}</h3><div class="choice-list">${content.check.choices.map((choice, index) => `<button type="button" data-check-answer="${index}">${choice}</button>`).join('')}</div>${active.knowledgeFeedback ? `<p class="check-feedback">${active.knowledgeFeedback}</p>` : ''}${result.knowledgePassed ? '<b class="pass-note">✓ 已通過理解檢核</b>' : ''}</div>`;
-  let assessmentMarkup = '<div class="assessment-empty"><b>本節為觀念教材</b><p>完成理解檢核即可通過；分析器尚未假裝能自動辨識這項進階技巧。</p></div>';
+  let assessmentMarkup = '<div class="assessment-empty"><b>本節為觀念教材</b><p>完成理解檢核即可通過；本節不另設指定位置考題。</p></div>';
   if (question) {
     const passedCount = result.passedQuestionIds.filter((id) => questions.some((item) => item.id === id)).length;
     assessmentMarkup = `<div class="assessment-head"><div><span>定點判讀 · ${active.questionIndex + 1}/${questions.length}</span><h3>${question.prompt}</h3><p>${question.instruction}</p></div><div class="mode-switch"><button type="button" data-assessment-mode="guided" class="${active.mode === 'guided' ? 'active' : ''}">教學</button><button type="button" data-assessment-mode="exam" class="${active.mode === 'exam' ? 'active' : ''}">考試</button></div></div>
