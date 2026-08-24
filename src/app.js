@@ -23,8 +23,9 @@ import {
   pauseTrial,
   snapshotTrialState,
   startTrial,
+  trialConflictIndices,
   trialCounts
-} from './core/trial.js?v=20260825-trial1';
+} from './core/trial.js?v=20260825-trial2';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-advanced1';
 import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-advanced1';
 import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-advanced1';
@@ -246,7 +247,7 @@ function initializeBoard() {
 
 function renderBoard() {
   const given = new Set(state.record.puzzle.map((value, index) => value ? index : -1).filter((index) => index >= 0));
-  const completedDigits = new Set(getCompletedDigits(state.grid, state.record.solution));
+  const completedDigits = new Set(getCompletedDigits(state.grid, hasTrialChanges(state.trial) ? null : state.record.solution));
   const selectedValue = state.selected >= 0 ? state.grid[state.selected] : 0;
   for (let index = 0; index < 81; index += 1) {
     const cell = board.children[index];
@@ -262,8 +263,9 @@ function renderBoard() {
     else if (isPeer) cell.classList.add('peer');
     if (selectedValue && value === selectedValue) cell.classList.add('same-number');
     if (value && completedDigits.has(value)) cell.classList.add('digit-completed');
+    const answerWrong = state.wrong.has(index) && !trialColor;
     if (state.conflicts.has(index)) cell.classList.add('conflict');
-    if (state.wrong.has(index)) cell.classList.add('wrong');
+    if (answerWrong) cell.classList.add('wrong');
     if (state.hint?.targets?.includes(index) || state.hint?.index === index) cell.classList.add('hint-target');
     if (state.hint?.related?.includes(index)) cell.classList.add('hint-related');
     cell.replaceChildren();
@@ -283,7 +285,7 @@ function renderBoard() {
       cell.append(notes);
     }
     const trialLabel = trialColor === 1 ? '，藍色 A 試填' : trialColor === 2 ? '，紫色 B 試填' : '';
-    const errorLabel = state.wrong.has(index) ? '，答案錯誤' : state.conflicts.has(index) ? '，與同行、同列或同宮重複' : '';
+    const errorLabel = state.conflicts.has(index) ? '，與同行、同列或同宮重複' : answerWrong ? '，答案錯誤' : '';
     cell.setAttribute('aria-label', `${cellName(index)}${value ? `，數字 ${value}` : '，空格'}${trialLabel}${errorLabel}`);
     cell.setAttribute('aria-invalid', errorLabel ? 'true' : 'false');
     cell.setAttribute('aria-selected', index === state.selected ? 'true' : 'false');
@@ -347,7 +349,7 @@ function renderTrialControls() {
   const button = byId('trial-btn');
   const counts = trialCounts(state.trial);
   const changed = hasTrialChanges(state.trial);
-  const hasWrongTrial = state.trial.marks.some((color, index) => color && state.wrong.has(index));
+  const hasWrongTrial = trialConflictIndices(state.trial, state.conflicts).length > 0;
   const activeLabel = state.trial.active === 1 ? '藍色 A' : state.trial.active === 2 ? '紫色 B' : '';
   panel.hidden = !state.trial.active && !changed;
   button.classList.toggle('active', Boolean(state.trial.active));
@@ -358,8 +360,8 @@ function renderTrialControls() {
   });
   byId('trial-status').textContent = state.trial.active ? `${activeLabel} 試填中` : '試填已保留';
   byId('trial-summary').textContent = changed
-    ? `藍色 A ${counts[1]} 格、紫色 B ${counts[2]} 格${state.trial.active ? '；可切換顏色繼續。' : '；請選擇續填、轉正或清除。'}`
-    : '選擇藍色 A 或紫色 B，試填數字不會立刻轉正。';
+    ? `藍色 A ${counts[1]} 格、紫色 B ${counts[2]} 格；僅檢查基本衝突，不對照答案。${state.trial.active ? '可切換顏色繼續。' : '請選擇續填、轉正或清除。'}`
+    : '選擇藍色 A 或紫色 B；只檢查同行、同列與同宮重複，不會對照答案。';
   byId('trial-confirm-btn').disabled = !changed || hasWrongTrial;
   byId('trial-confirm-btn').title = hasWrongTrial ? '請先修正紅色錯誤格' : '保留數字並移除所有試填顏色';
   byId('trial-keep-btn').disabled = !state.trial.active;
@@ -376,7 +378,7 @@ function activateTrial(color = state.trial.focus) {
   renderBoard();
   persistSession();
   const label = color === 1 ? '藍色 A' : '紫色 B';
-  setCoach('試填模式', `${label}已啟用`, '接下來輸入或清除的格子會保留特殊顏色；A、B 最多兩種，可隨時切換。', '全部轉正會保留數字並移除顏色；清除試填會完整回到開始試填前的盤面。');
+  setCoach('試填模式', `${label}已啟用`, '接下來輸入或清除的格子會保留特殊顏色；A、B 最多兩種，可隨時切換。', '試填只檢查同行、同列與同宮重複，不會偷看答案；轉正後才恢復正式答案檢查。');
 }
 
 function keepTrialChanges({ wrong = false } = {}) {
@@ -391,7 +393,7 @@ function keepTrialChanges({ wrong = false } = {}) {
 
 function confirmTrialChanges() {
   if (!hasTrialChanges(state.trial)) return showToast('目前沒有可轉正的試填內容。');
-  if (state.trial.marks.some((color, index) => color && state.wrong.has(index))) return showToast('請先修正紅色錯誤格，再將試填轉正。', 'warning');
+  if (trialConflictIndices(state.trial, state.conflicts).length) return showToast('請先修正同行、同列或同宮的重複，再將試填轉正。', 'warning');
   const counts = trialCounts(state.trial);
   saveHistory();
   confirmTrials(state.trial);
@@ -470,7 +472,7 @@ function enterNumber(digit) {
   if (index < 0 || state.record.puzzle[index] || state.completed) return;
   if (trialInputIsPaused()) return;
   const hadSuggestions = state.suggestions.length > 0;
-  const wasWrong = state.wrong.has(index);
+  const wasWrong = state.trial.marks[index] ? state.conflicts.has(index) : state.wrong.has(index);
   saveHistory();
   state.hint = null;
   state.suggestions = [];
@@ -486,19 +488,21 @@ function enterNumber(digit) {
     for (const peer of PEERS[index]) state.notes[peer].delete(digit);
   }
   const validation = updateValidation();
-  const wrongEntry = !isNoteAction && state.wrong.has(index);
-  const wrongTrialEntry = wrongEntry && Boolean(state.trial.marks[index]);
+  const isTrialEntry = Boolean(state.trial.marks[index]);
+  const wrongEntry = !isNoteAction && !isTrialEntry && state.wrong.has(index);
+  const wrongTrialEntry = !isNoteAction && isTrialEntry && state.conflicts.has(index);
   if (wrongTrialEntry) pauseTrial(state.trial);
   renderBoard();
   persistSession();
   if (wrongTrialEntry) {
-    setCoach('試填發現錯誤', `${cellName(index)} 的 ${digit} 不正確`, '這一格已標紅，試填模式也已暫停；目前 A、B 試填內容都仍保留。', '你可以檢查推理後續填，或直接選擇「清除試填」回到試填前盤面。');
-    showToast('發現試填錯誤，已暫停並保留試填內容。', 'warning');
+    setCoach('試填發現基本衝突', `${cellName(index)} 的 ${digit} 造成重複`, '這個數字與同行、同列或同宮重複，試填模式已暫停；目前 A、B 試填內容都仍保留。', '系統沒有對照答案。你可以檢查後續填，或選擇「清除試填」回到試填前盤面。');
+    showToast('試填造成基本規則衝突，已暫停並保留。', 'warning');
   } else if (wrongEntry) {
     setCoach('立即檢查', `${cellName(index)} 的 ${digit} 不正確`, '這一格已標紅；請重新檢查它所在的行、列與九宮候選。', '系統只指出這一步不符合本題唯一解，不會直接洩漏正確答案。');
     showToast(`${cellName(index)} 填入 ${digit} 不正確，已標紅。`, 'warning');
   } else if (wasWrong) {
-    setCoach('立即檢查', `${cellName(index)} 已修正`, '紅色錯誤標記已移除，可以繼續解題。', '這個數字現在符合本題唯一解。');
+    const correctionDetail = isTrialEntry ? '目前已沒有同行、同列或同宮重複；系統仍未對照答案。' : '這個數字現在符合本題唯一解。';
+    setCoach('立即檢查', `${cellName(index)} 已修正`, '紅色錯誤標記已移除，可以繼續解題。', correctionDetail);
     showToast(`${cellName(index)} 已修正。`, 'success');
   } else if (!validation.valid) showToast('這個數字與同一單位中的數字重複。', 'warning');
   if (isSolved(state.grid)) completePuzzle();
@@ -605,11 +609,13 @@ function applyHint() {
 
 function checkAnswer() {
   const validation = updateValidation();
+  const committedWrong = [...state.wrong].filter((index) => !state.trial.marks[index]);
   if (!validation.valid) {
     showToast(`找到 ${validation.conflicts.length} 個衝突格。`, 'warning');
   } else {
-    if (state.wrong.size) showToast(`有 ${state.wrong.size} 格不符合這題的唯一解。`, 'warning');
+    if (committedWrong.length) showToast(`有 ${committedWrong.length} 格正式作答不符合這題的唯一解。`, 'warning');
     else if (isSolved(state.grid)) completePuzzle();
+    else if (hasTrialChanges(state.trial)) showToast('試填目前沒有基本規則衝突；試填不會對照答案。', 'success');
     else showToast('目前填入的答案都正確，可以繼續。', 'success');
   }
   renderBoard();

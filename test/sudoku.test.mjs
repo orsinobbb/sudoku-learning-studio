@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  PEERS,
   analyzePuzzle,
   candidateNotesForGrid,
   candidatesFor,
@@ -37,6 +38,7 @@ import {
   pauseTrial,
   snapshotTrialState,
   startTrial,
+  trialConflictIndices,
   trialCounts
 } from '../src/core/trial.js';
 
@@ -396,4 +398,27 @@ test('confirming trials keeps entries and rejects a third color', () => {
   assert.equal(grid[4], 8);
   assert.equal(hasTrialChanges(trial), false);
   assert.equal(trial.active, 0);
+});
+
+test('trial errors use board conflicts instead of comparing the solution', () => {
+  const solution = solveGrid(classic);
+  const index = classic.findIndex((value) => value === 0);
+  const wrongButLegal = candidatesFor(classic, index).find((digit) => digit !== solution[index]);
+  assert.ok(wrongButLegal, 'fixture should have a legal candidate different from the solution');
+
+  const grid = [...classic];
+  const notes = Array.from({ length: 81 }, () => new Set());
+  const trial = createTrialState();
+  startTrial(trial, 1, grid, notes);
+  markTrialCell(trial, index);
+  grid[index] = wrongButLegal;
+
+  assert.deepEqual(getWrongEntries(grid, solution), [index]);
+  assert.deepEqual(validateGrid(grid).conflicts, []);
+  assert.deepEqual(trialConflictIndices(trial, validateGrid(grid).conflicts), []);
+
+  const peer = [...PEERS[index]].find((peerIndex) => grid[peerIndex]);
+  assert.ok(Number.isInteger(peer));
+  grid[index] = grid[peer];
+  assert.deepEqual(trialConflictIndices(trial, validateGrid(grid).conflicts), [index]);
 });

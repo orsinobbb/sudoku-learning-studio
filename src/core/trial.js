@@ -89,3 +89,10 @@ export function trialCounts(trial) {
 export function hasTrialChanges(trial) {
   return trial.marks.some(Boolean);
 }
+
+export function trialConflictIndices(trial, conflicts = []) {
+  const conflictSet = new Set(conflicts);
+  return trial.marks
+    .map((color, index) => color && conflictSet.has(index) ? index : -1)
+    .filter((index) => index >= 0);
+}
