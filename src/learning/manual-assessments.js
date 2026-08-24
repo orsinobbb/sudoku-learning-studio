@@ -360,27 +360,60 @@ function validateTechniqueGeometry(question, errors) {
       'Empty Rectangle 外部強連結未接上兩臂'
     );
   } else if (question.technique === 'xyzWing') {
+    const wingIntersection = candidates('xz').filter((digit) => candidates('yz').includes(digit));
+    require(candidates('pivot').length === 3 && candidates('xz').length === 2 && candidates('yz').length === 2, 'XYZ-Wing 必須是一個三候選樞紐與兩個雙候選翼');
+    require(['xz', 'yz'].every((name) => candidates(name).every((digit) => candidates('pivot').includes(digit))), 'XYZ-Wing 兩翼候選必須是樞紐候選的子集');
+    require(wingIntersection.length === 1 && wingIntersection[0] === question.answers[0].digit, 'XYZ-Wing 兩翼共同候選與排除數不一致');
     require(sees(p.pivot, p.xz) && sees(p.pivot, p.yz) && [p.pivot, p.xz, p.yz].every((index) => sees(p.target, index)), 'XYZ-Wing 樞紐、兩翼或目標可見關係不成立');
   } else if (question.technique === 'wWing') {
+    const connector = candidates('left').find((digit) => digit !== question.answers[0].digit);
+    require(candidates('left').length === 2 && sameDigits('left', 'right'), 'W-Wing 兩翼必須是相同雙候選格');
+    require(candidates('linkA').includes(connector) && candidates('linkB').includes(connector), 'W-Wing 強連結沒有承接另一翼候選');
     require(sameDigits('left', 'right') && sees(p.left, p.linkA) && sees(p.right, p.linkB) && sees(p.target, p.left) && sees(p.target, p.right), 'W-Wing 雙候選翼或強連結幾何不成立');
   } else if (question.technique === 'simpleColoring') {
+    require(['a1', 'b1', 'a2', 'b2', 'target'].every((name) => candidates(name).includes(question.answers[0].digit)), '簡單著色鏈遺失目標候選');
     require(sees(p.a1, p.b1) && sees(p.b1, p.a2) && sees(p.a2, p.b2) && sees(p.target, p.a1) && sees(p.target, p.b2), '簡單著色鏈或 Color Trap 不成立');
   } else if (question.technique === 'xChain') {
+    require(['a', 'b', 'c', 'd', 'e', 'f', 'target'].every((name) => candidates(name).includes(question.answers[0].digit)), 'X-Chain 節點遺失鏈候選');
     require(sees(p.a, p.b) && sees(p.b, p.c) && sees(p.c, p.d) && sees(p.d, p.e) && sees(p.e, p.f) && sees(p.target, p.a) && sees(p.target, p.f), 'X-Chain 連結或端點可見關係不成立');
   } else if (question.technique === 'xyChain') {
     const chain = ['a', 'b', 'c', 'd'];
     require(chain.every((name) => candidates(name).length === 2), 'XY-Chain 鏈格必須皆為雙候選');
-    require(chain.slice(1).every((name, index) => sees(p[chain[index]], p[name]) && candidates(chain[index]).some((digit) => candidates(name).includes(digit))), 'XY-Chain 相鄰格未正確承接候選');
+    require(chain.slice(1).every((name, index) => sees(p[chain[index]], p[name]) && candidates(chain[index]).filter((digit) => candidates(name).includes(digit)).length === 1), 'XY-Chain 相鄰格未正確承接單一候選');
+    require(candidates('a').includes(question.answers[0].digit) && candidates('d').includes(question.answers[0].digit), 'XY-Chain 兩端共同候選與排除數不一致');
     require(sees(p.target, p.a) && sees(p.target, p.d), 'XY-Chain 目標未同時看見兩端');
   } else if (question.technique === 'aic') {
+    const chain = ['a', 'b', 'c', 'd', 'e'];
+    require(chain.every((name) => candidates(name).length === 2), 'AIC 範例鏈格必須皆為雙候選');
+    require(chain.slice(1).every((name, index) => candidates(chain[index]).filter((digit) => candidates(name).includes(digit)).length === 1), 'AIC 相鄰節點未承接單一候選');
+    require(candidates('a').includes(question.answers[0].digit) && candidates('e').includes(question.answers[0].digit), 'AIC 兩端候選與排除數不一致');
     require(sees(p.a, p.b) && sees(p.b, p.c) && sees(p.c, p.d) && sees(p.d, p.e) && sees(p.target, p.a) && sees(p.target, p.e), 'AIC 鏈結或端點可見關係不成立');
   } else if (question.technique === 'als') {
+    const groupA = ['a1', 'a2'];
+    const groupB = ['b1', 'b2'];
+    const union = (names) => [...new Set(names.flatMap(candidates))];
+    const unionA = union(groupA);
+    const unionB = union(groupB);
+    const shared = unionA.filter((digit) => unionB.includes(digit));
+    const z = question.answers[0].digit;
+    const x = shared.find((digit) => digit !== z);
+    require(unionA.length === groupA.length + 1 && unionB.length === groupB.length + 1, 'ALS 每組 n 格必須恰含 n+1 個候選');
+    require(shared.length === 2 && shared.includes(z), 'ALS-XZ 必須有受限共同候選 X 與共同候選 Z');
+    const xInA = groupA.filter((name) => candidates(name).includes(x));
+    const xInB = groupB.filter((name) => candidates(name).includes(x));
+    require(xInA.length === 1 && xInB.length === 1 && sees(p[xInA[0]], p[xInB[0]]), 'ALS-XZ 的 X 不是受限共同候選');
     require(sees(p.a1, p.a2) && sees(p.b1, p.b2) && sees(p.a1, p.b1), 'ALS 集合或受限共同候選關係不成立');
-    require([p.a2, p.b1, p.b2].every((index) => sees(p.target, index)), 'ALS-XZ 目標未看見所有 Z 落點');
+    require([...groupA, ...groupB].filter((name) => candidates(name).includes(z)).every((name) => sees(p.target, p[name])), 'ALS-XZ 目標未看見所有 Z 落點');
   } else if (question.technique === 'sueDeCoq') {
     const intersectionUsesRow = row('i1') === row('i2');
     const intersectionUsesCol = col('i1') === col('i2');
     const onIntersectionLine = (name) => intersectionUsesRow ? row(name) === row('i1') : col(name) === col('i1');
+    const intersectionDigits = [...new Set([...candidates('i1'), ...candidates('i2')])];
+    const lineDigits = candidates('row');
+    const boxDigits = candidates('box');
+    require(intersectionDigits.length === 4 && lineDigits.length === 2 && boxDigits.length === 2, 'Sue de Coq 交界與兩側候選數量不成立');
+    require(lineDigits.every((digit) => !boxDigits.includes(digit)) && [...lineDigits, ...boxDigits].every((digit) => intersectionDigits.includes(digit)), 'Sue de Coq 兩側集合未完整且互斥地拆分交界候選');
+    require(lineDigits.includes(question.answers[0].digit) && candidates('target').includes(question.answers[0].digit), 'Sue de Coq 行列側集合與排除數不一致');
     require((intersectionUsesRow || intersectionUsesCol) && box('i1') === box('i2'), 'Sue de Coq 交界格不在同一行列與宮的交界');
     require(onIntersectionLine('row') && box('row') !== box('i1') && box('box') === box('i1') && !onIntersectionLine('box'), 'Sue de Coq 行列側或宮側集合位置不成立');
     require(onIntersectionLine('target') && box('target') !== box('i1'), 'Sue de Coq 排除格位置不成立');
@@ -390,16 +423,25 @@ function validateTechniqueGeometry(question, errors) {
     const sameBase = (left, right) => baseUsesRows ? row(left) === row(right) : col(left) === col(right);
     const sameCover = (left, right) => baseUsesRows ? col(left) === col(right) : row(left) === row(right);
     require((baseUsesRows || baseUsesCols) && sameBase('c', 'd') && sameBase('d', 'fin'), 'Finned X-Wing 基底行列不成立');
-    require(sameCover('a', 'c') && sameCover('b', 'd') && sees(p.fin, p.target) && sameCover('target', 'b'), 'Finned X-Wing 覆蓋行列、鰭或排除格不成立');
+    require(['a', 'b', 'c', 'd', 'fin', 'target'].every((name) => candidates(name).includes(question.answers[0].digit)), 'Finned X-Wing 節點遺失魚候選');
+    require(sameCover('a', 'c') && sameCover('b', 'd') && box('fin') === box('target') && sameCover('target', 'b'), 'Finned X-Wing 覆蓋行列、鰭宮或排除格不成立');
   } else if (question.technique === 'uniqueRectangle') {
     const corners = ['a', 'b', 'c', 'target'];
+    const rectanglePair = candidates('a');
     require(new Set(corners.map(row)).size === 2 && new Set(corners.map(col)).size === 2 && new Set(corners.map(box)).size === 2, '唯一矩形必須跨兩行、兩列及兩宮');
-    require(sameDigits('a', 'b') && sameDigits('a', 'c') && candidates('target').length === 3, '唯一矩形 Type 1 候選配置不成立');
+    require(rectanglePair.length === 2 && sameDigits('a', 'b') && sameDigits('a', 'c') && candidates('target').length === 3 && rectanglePair.every((digit) => candidates('target').includes(digit)), '唯一矩形 Type 1 候選配置不成立');
+    require(question.answers.every(({ digit }) => rectanglePair.includes(digit)), '唯一矩形排除答案不是矩形候選');
   } else if (question.technique === 'bugPlusOne') {
     const blanks = question.board.map((value, index) => value ? -1 : index).filter((index) => index >= 0);
     require(blanks.filter((index) => question.candidates[index].length === 2).length === blanks.length - 1, 'BUG+1 其他未解格必須全為雙候選');
     require(question.candidates[p.target].length === 3, 'BUG+1 必須只有一個三候選格');
   } else if (question.technique === 'forcingChain') {
+    const pivotDigits = candidates('pivot');
+    const branchA = pivotDigits.filter((digit) => candidates('a').includes(digit));
+    const branchB = pivotDigits.filter((digit) => candidates('b').includes(digit));
+    require(pivotDigits.length === 2 && candidates('a').length === 2 && candidates('b').length === 2, '強制鏈樞紐與分支格必須為雙候選');
+    require(branchA.length === 1 && branchB.length === 1 && branchA[0] !== branchB[0], '強制鏈兩分支沒有分別承接樞紐兩個候選');
+    require(candidates('a').includes(question.answers[0].digit) && candidates('b').includes(question.answers[0].digit) && candidates('target').includes(question.answers[0].digit), '強制鏈共同結論與排除數不一致');
     require(sees(p.pivot, p.a) && sees(p.pivot, p.b) && sees(p.target, p.a) && sees(p.target, p.b), '強制鏈分支或共同結論可見關係不成立');
   }
 }
