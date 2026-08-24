@@ -16,6 +16,9 @@ import {
 } from '../src/core/sudoku.js';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES } from '../src/learning/curriculum.js';
 import { TECHNIQUE_DRILLS } from '../src/learning/drills.js';
+import { evaluateTechniqueAnswer, getTechniqueQuestions } from '../src/learning/assessments.js';
+import { TUTORIALS } from '../src/learning/tutorials.js';
+import { PROGRESS_KEY, SESSION_KEY, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
 
 const classic = parsePuzzle('530070000600195000098000060800060003400803001700020006060000280000419005000080079');
 
@@ -124,4 +127,45 @@ test('every detectable technique has a verified dedicated drill', () => {
     assert.equal(analysis.valid && analysis.unique, true, `${drill.technique} drill should have one solution`);
     assert.ok(analysis.techniqueCounts[drill.technique] >= 1, `${drill.technique} should occur in its drill`);
   }
+});
+
+test('every lesson has complete teaching content and a knowledge check', () => {
+  assert.equal(Object.keys(TUTORIALS).length, ALL_LESSONS.length);
+  for (const lesson of ALL_LESSONS) {
+    const tutorial = TUTORIALS[lesson.id];
+    assert.ok(tutorial?.principle && tutorial?.example && tutorial?.pitfall, `${lesson.id} should have full content`);
+    assert.equal(tutorial.steps.length, 3);
+    assert.ok(tutorial.check.choices[tutorial.check.answer]);
+  }
+});
+
+test('every detectable technique has three target-position questions with exact grading', () => {
+  for (const lesson of DETECTABLE_LESSONS) {
+    const questions = getTechniqueQuestions(lesson.analyzer, 3);
+    assert.equal(questions.length, 3, `${lesson.analyzer} should have three variants`);
+    assert.equal(new Set(questions.map(({ boardKey }) => boardKey)).size, 3);
+    for (const question of questions) {
+      const answer = question.answers[0];
+      assert.equal(evaluateTechniqueAnswer(question, answer.index, answer.digit), true);
+      const givenIndex = question.board.findIndex(Boolean);
+      assert.equal(evaluateTechniqueAnswer(question, givenIndex, question.board[givenIndex]), false);
+      assert.equal(question.board.length, 81);
+      assert.equal(question.candidates.length, 81);
+    }
+  }
+});
+
+test('progress migrates and puzzle sessions round-trip through browser storage', () => {
+  const values = new Map();
+  const storage = { getItem: (key) => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) };
+  values.set(PROGRESS_KEY, JSON.stringify({ version: 3, solvedCount: 2, completedLessons: ['rules'] }));
+  const migrated = readProgress(storage);
+  assert.equal(migrated.solvedCount, 2);
+  assert.deepEqual(migrated.lessonResults, {});
+  writeProgress({ ...migrated, lessonResults: { rules: { knowledgePassed: true } } }, storage);
+  assert.equal(JSON.parse(values.get(PROGRESS_KEY)).version, 4);
+  const record = generatePuzzle({ difficulty: 'easy', seed: 'SAVE' });
+  writeSession({ id: 'one', record, grid: record.puzzle, notes: Array.from({ length: 81 }, () => []), elapsed: 42 }, storage);
+  assert.equal(readSession(storage).elapsed, 42);
+  assert.equal(JSON.parse(values.get(SESSION_KEY)).version, 1);
 });

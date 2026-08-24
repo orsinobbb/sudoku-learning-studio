@@ -13,7 +13,10 @@ import {
   validateGrid
 } from './core/sudoku.js';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TECHNIQUE_NAMES } from './learning/curriculum.js';
-import { DRILL_BY_TECHNIQUE, TECHNIQUE_DRILLS } from './learning/drills.js';
+import { DRILL_BY_TECHNIQUE } from './learning/drills.js';
+import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js';
+import { getTutorial } from './learning/tutorials.js';
+import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
@@ -21,9 +24,8 @@ const coachContent = byId('coach-content');
 const toast = byId('toast');
 const strategyNames = TECHNIQUE_NAMES;
 
-const storedProgress = (() => {
-  try { return JSON.parse(localStorage.getItem('sudoku-learning-progress')) || {}; } catch { return {}; }
-})();
+const storedProgress = readProgress();
+const pendingSession = readSession();
 
 const learningProfile = {
   completedLessons: new Set(Array.isArray(storedProgress.completedLessons) ? storedProgress.completedLessons : []),
@@ -31,7 +33,8 @@ const learningProfile = {
   activities: Array.isArray(storedProgress.activities) ? storedProgress.activities.slice(0, 60) : [],
   totalActivities: Number(storedProgress.totalActivities || storedProgress.activities?.length || 0),
   hintsUsed: Number(storedProgress.hintsUsed || 0),
-  analysesRun: Number(storedProgress.analysesRun || 0)
+  analysesRun: Number(storedProgress.analysesRun || 0),
+  lessonResults: storedProgress.lessonResults
 };
 
 const state = {
@@ -48,14 +51,16 @@ const state = {
   timerId: null,
   completed: false,
   activeDrill: null,
+  title: '',
+  sessionId: '',
+  activeLesson: null,
   solvedCount: Number(storedProgress.solvedCount || 0),
   learning: learningProfile,
   generatorDifficulty: 'easy'
 };
 
 function persistProgress() {
-  localStorage.setItem('sudoku-learning-progress', JSON.stringify({
-    version: 3,
+  writeProgress({
     solvedCount: state.solvedCount,
     completedLessons: [...state.learning.completedLessons],
     completedDrills: [...state.learning.completedDrills],
@@ -63,8 +68,31 @@ function persistProgress() {
     totalActivities: state.learning.totalActivities,
     hintsUsed: state.learning.hintsUsed,
     analysesRun: state.learning.analysesRun,
-    updatedAt: new Date().toISOString()
-  }));
+    lessonResults: state.learning.lessonResults
+  });
+}
+
+function lessonResult(id) {
+  if (!state.learning.lessonResults[id]) {
+    state.learning.lessonResults[id] = { knowledgePassed: false, passedQuestionIds: [], attempts: 0, firstTryCorrect: 0, hintsUsed: 0 };
+  }
+  return state.learning.lessonResults[id];
+}
+
+function persistSession() {
+  if (!state.record || !state.grid.length) return;
+  writeSession({
+    id: state.sessionId,
+    title: state.title,
+    record: state.record,
+    grid: state.grid,
+    notes: state.notes.map((values) => [...values]),
+    selected: state.selected,
+    elapsed: state.elapsed,
+    completed: state.completed,
+    activeDrill: state.activeDrill?.technique || null,
+    startedAt: state.startedAt
+  });
 }
 
 function recordActivity(type, detail) {
@@ -239,6 +267,7 @@ function enterNumber(digit) {
   }
   const validation = updateValidation();
   renderBoard();
+  persistSession();
   if (!validation.valid) showToast('這個數字與同一單位中的數字重複。', 'warning');
   if (isSolved(state.grid)) completePuzzle();
 }
@@ -252,6 +281,7 @@ function eraseSelected() {
   state.hint = null;
   updateValidation();
   renderBoard();
+  persistSession();
 }
 
 function undo() {
@@ -262,6 +292,7 @@ function undo() {
   state.hint = null;
   updateValidation();
   renderBoard();
+  persistSession();
 }
 
 function resetPuzzle() {
@@ -275,6 +306,7 @@ function resetPuzzle() {
   updateValidation();
   setCoach('重新開始', '盤面已回到最初狀態', '先掃描每個九宮，找出候選數最少的空格。', '優先處理唯一候選，通常能打開後續推理。');
   renderBoard();
+  persistSession();
 }
 
 function completePuzzle() {
@@ -291,6 +323,7 @@ function completePuzzle() {
   }
   showToast('恭喜完成！學習紀錄已保存在這個裝置。', 'success');
   renderBoard();
+  persistSession();
 }
 
 function requestHint() {
@@ -337,7 +370,7 @@ function checkAnswer() {
   renderBoard();
 }
 
-function loadPuzzle(record, title = '') {
+function loadPuzzle(record, title = '', { persist = true } = {}) {
   state.record = record;
   state.grid = [...record.puzzle];
   state.notes = Array.from({ length: 81 }, () => new Set());
@@ -349,10 +382,38 @@ function loadPuzzle(record, title = '') {
   state.elapsed = 0;
   state.completed = false;
   state.activeDrill = null;
+  state.title = title || `${record.seed} · ${record.clues} 個線索`;
+  state.sessionId = `${record.seed || 'PUZZLE'}-${Date.now()}`;
+  state.startedAt = new Date().toISOString();
   byId('difficulty-badge').textContent = DIFFICULTIES[record.difficulty].label;
-  byId('puzzle-title').textContent = title || `${record.seed} · ${record.clues} 個線索`;
+  byId('puzzle-title').textContent = state.title;
   byId('apply-hint-btn').hidden = true;
   setCoach('觀察 01', '先從候選數最少的格子開始', '點選一個空格，我會整理同行、同列與同宮的關係，並顯示候選數。', '每一步都應該有盤面依據，不必憑感覺猜。');
+  startTimer();
+  renderBoard();
+  if (persist) persistSession();
+}
+
+function restoreSession(session) {
+  state.record = session.record;
+  state.grid = [...session.grid];
+  state.notes = Array.from({ length: 81 }, (_, index) => new Set(Array.isArray(session.notes?.[index]) ? session.notes[index] : []));
+  state.history = [];
+  state.selected = Number.isInteger(session.selected) ? session.selected : -1;
+  state.conflicts = new Set();
+  state.wrong = new Set();
+  state.hint = null;
+  state.elapsed = Number(session.elapsed || 0);
+  state.completed = Boolean(session.completed);
+  state.activeDrill = session.activeDrill ? DRILL_BY_TECHNIQUE.get(session.activeDrill) || null : null;
+  state.title = session.title || `${session.record.seed} · 繼續作答`;
+  state.sessionId = session.id || `${session.record.seed || 'PUZZLE'}-${Date.now()}`;
+  state.startedAt = session.startedAt || new Date().toISOString();
+  byId('difficulty-badge').textContent = DIFFICULTIES[state.record.difficulty]?.label || state.record.difficultyLabel || '練習';
+  byId('puzzle-title').textContent = state.title;
+  byId('apply-hint-btn').hidden = true;
+  updateValidation();
+  setCoach(state.completed ? '已完成' : '繼續作答', state.completed ? '這題已完成，可以重做' : '已載入上次進度', state.completed ? '按「再練一次」會保留原歷程並建立新的作答。' : `盤面、筆記與 ${formatTime(state.elapsed)} 計時均已復原。`, '資料只保存在這個瀏覽器；清除網站資料或更換裝置後不會同步。');
   startTimer();
   renderBoard();
 }
@@ -376,6 +437,7 @@ function startTechniqueDrill(technique) {
     clues: analysis.clues
   }, `專項考題 · ${lesson.name}`);
   state.activeDrill = drill;
+  persistSession();
   setCoach('技巧專項', `目標：${lesson.name}`, drill.prompt, `完整解題過程經分析器驗證，確實包含「${lesson.name}」；需要時可逐步使用提示。`);
   switchView('practice');
   showToast(`已載入「${lesson.name}」專項考題。`, 'success');
@@ -416,6 +478,155 @@ function runAnalysis() {
   }
 }
 
+function syncLessonCompletion(lesson) {
+  const result = lessonResult(lesson.id);
+  const questionCount = lesson.analyzer && lesson.analyzer !== 'search' ? getTechniqueQuestions(lesson.analyzer, 3).length : 0;
+  const passed = result.knowledgePassed && (!questionCount || result.passedQuestionIds.length >= questionCount);
+  if (passed && !state.learning.completedLessons.has(lesson.id)) {
+    state.learning.completedLessons.add(lesson.id);
+    recordActivity('lesson', `通過課程「${lesson.name}」${questionCount ? `與 ${questionCount} 題定點考試` : '理解檢核'}`);
+  } else persistProgress();
+  return passed;
+}
+
+function openLesson(id) {
+  const lesson = ALL_LESSONS.find((item) => item.id === id);
+  if (!lesson) return;
+  state.activeLesson = {
+    id,
+    questionIndex: 0,
+    selected: -1,
+    mode: 'guided',
+    hintLevel: 0,
+    answered: false,
+    feedback: '',
+    attemptsByQuestion: {},
+    knowledgeFeedback: ''
+  };
+  renderLessonWorkbench();
+  byId('lesson-workbench').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function assessmentCell(question, index, active) {
+  const value = question.board[index];
+  const candidates = question.candidates[index] || [];
+  const related = active.hintLevel >= 1 && question.related.includes(index);
+  const target = (active.answered || active.hintLevel >= 2) && question.answers.some((answer) => answer.index === index);
+  const classes = ['assessment-cell'];
+  if (value) classes.push('given');
+  if (index === active.selected) classes.push('selected');
+  if (related) classes.push('related');
+  if (target) classes.push('target');
+  const content = value
+    ? `<b>${value}</b>`
+    : `<span>${Array.from({ length: 9 }, (_, digit) => `<i>${candidates.includes(digit + 1) ? digit + 1 : ''}</i>`).join('')}</span>`;
+  return `<button type="button" class="${classes.join(' ')}" data-assessment-cell="${index}" aria-label="${cellName(index)}">${content}</button>`;
+}
+
+function renderLessonWorkbench() {
+  const panel = byId('lesson-workbench');
+  const active = state.activeLesson;
+  if (!panel || !active) {
+    if (panel) panel.hidden = true;
+    return;
+  }
+  const lesson = ALL_LESSONS.find((item) => item.id === active.id);
+  const content = getTutorial(active.id);
+  if (!lesson || !content) return;
+  const result = lessonResult(lesson.id);
+  const questions = lesson.analyzer && lesson.analyzer !== 'search' ? getTechniqueQuestions(lesson.analyzer, 3) : [];
+  const question = questions[active.questionIndex] || null;
+  const checkMarkup = `<div class="knowledge-check"><span>理解檢核</span><h3>${content.check.prompt}</h3><div class="choice-list">${content.check.choices.map((choice, index) => `<button type="button" data-check-answer="${index}">${choice}</button>`).join('')}</div>${active.knowledgeFeedback ? `<p class="check-feedback">${active.knowledgeFeedback}</p>` : ''}${result.knowledgePassed ? '<b class="pass-note">✓ 已通過理解檢核</b>' : ''}</div>`;
+  let assessmentMarkup = '<div class="assessment-empty"><b>本節為觀念教材</b><p>完成理解檢核即可通過；分析器尚未假裝能自動辨識這項進階技巧。</p></div>';
+  if (question) {
+    const passedCount = result.passedQuestionIds.filter((id) => questions.some((item) => item.id === id)).length;
+    assessmentMarkup = `<div class="assessment-head"><div><span>定點判讀 · ${active.questionIndex + 1}/${questions.length}</span><h3>${question.prompt}</h3><p>${question.instruction}</p></div><div class="mode-switch"><button type="button" data-assessment-mode="guided" class="${active.mode === 'guided' ? 'active' : ''}">教學</button><button type="button" data-assessment-mode="exam" class="${active.mode === 'exam' ? 'active' : ''}">考試</button></div></div>
+      <div class="assessment-layout"><div><div class="assessment-board">${question.board.map((_, index) => assessmentCell(question, index, active)).join('')}</div><div class="assessment-pad">${[1,2,3,4,5,6,7,8,9].map((digit) => `<button type="button" data-assessment-digit="${digit}">${digit}</button>`).join('')}</div></div>
+      <aside class="assessment-coach"><span>${question.variantLabel} · 已通過 ${passedCount}/${questions.length}</span><p>${active.mode === 'guided' ? `觀察口訣：${lesson.cue}` : '考試模式不顯示提示；請獨立完成一次判讀。'}</p>${active.feedback ? `<div class="assessment-feedback">${active.feedback}</div>` : ''}<div class="assessment-actions">${active.mode === 'guided' && !active.answered ? `<button type="button" data-assessment-hint>${active.hintLevel === 0 ? '提示：標出關聯格' : '再提示：標出答案格'}</button>` : ''}<button type="button" data-assessment-next>下一題</button></div>${active.answered || active.hintLevel >= 2 ? `<div class="answer-explanation"><b>推理說明</b><p>${question.explanation}</p><small>${question.answerSummary}</small></div>` : ''}</aside></div>`;
+  }
+  panel.hidden = false;
+  panel.innerHTML = `<header class="workbench-title"><div><span>${lesson.stageTitle} · 完整教學</span><h2>${lesson.name}</h2></div><button type="button" data-lesson-close aria-label="關閉教材">×</button></header><div class="tutorial-grid"><article><b>核心原理</b><p>${content.principle}</p></article><article><b>判讀三步</b><ol>${content.steps.map((step) => `<li>${step}</li>`).join('')}</ol></article><article><b>完整例題</b><p>${content.example}</p></article><article class="pitfall"><b>常見陷阱</b><p>${content.pitfall}</p></article></div>${checkMarkup}<section class="target-assessment"><div class="target-intro"><span>TARGETED ASSESSMENT</span><h2>指定位置判讀</h2><p>不是把整題做完才算練習：直接判斷哪一格能填入、或哪個候選能排除。</p></div>${assessmentMarkup}</section>`;
+
+  panel.querySelector('[data-lesson-close]').addEventListener('click', () => { state.activeLesson = null; panel.hidden = true; });
+  panel.querySelectorAll('[data-check-answer]').forEach((button) => button.addEventListener('click', () => {
+    const correct = Number(button.dataset.checkAnswer) === content.check.answer;
+    active.knowledgeFeedback = `${correct ? '答對：' : '再想一次：'}${content.check.explanation}`;
+    if (correct) result.knowledgePassed = true;
+    syncLessonCompletion(lesson);
+    renderLessonWorkbench();
+  }));
+  panel.querySelectorAll('[data-assessment-cell]').forEach((button) => button.addEventListener('click', () => {
+    active.selected = Number(button.dataset.assessmentCell);
+    active.feedback = `已選 ${cellName(active.selected)}，現在選擇要${question.kind === 'placement' ? '填入' : '排除'}的數字。`;
+    renderLessonWorkbench();
+  }));
+  panel.querySelectorAll('[data-assessment-digit]').forEach((button) => button.addEventListener('click', () => {
+    if (active.selected < 0) { active.feedback = '請先點選一個目標格。'; return renderLessonWorkbench(); }
+    const attempts = active.attemptsByQuestion[question.id] || 0;
+    const correct = evaluateTechniqueAnswer(question, active.selected, Number(button.dataset.assessmentDigit));
+    result.attempts += 1;
+    if (correct) {
+      const firstTry = attempts === 0 && !active.usedHint;
+      active.answered = true;
+      active.hintLevel = 2;
+      active.feedback = `答對：${cellName(active.selected)} ${question.kind === 'placement' ? '填入' : '排除'} ${button.dataset.assessmentDigit}。`;
+      if (!result.passedQuestionIds.includes(question.id)) {
+        result.passedQuestionIds.push(question.id);
+        if (firstTry) result.firstTryCorrect += 1;
+      }
+    } else {
+      active.attemptsByQuestion[question.id] = attempts + 1;
+      active.feedback = '這個動作不是本步可證明的答案；回到技巧條件逐項核對。';
+    }
+    syncLessonCompletion(lesson);
+    renderLessonWorkbench();
+  }));
+  panel.querySelectorAll('[data-assessment-mode]').forEach((button) => button.addEventListener('click', () => {
+    active.mode = button.dataset.assessmentMode;
+    active.hintLevel = 0;
+    active.usedHint = false;
+    active.feedback = '';
+    renderLessonWorkbench();
+  }));
+  panel.querySelector('[data-assessment-hint]')?.addEventListener('click', () => {
+    active.hintLevel = Math.min(2, active.hintLevel + 1);
+    active.usedHint = true;
+    result.hintsUsed += 1;
+    state.learning.hintsUsed += 1;
+    active.feedback = active.hintLevel === 1 ? '已標出建立這一步的關聯格。' : `答案位置已標出；請再說出理由：${question.explanation}`;
+    persistProgress();
+    renderLessonWorkbench();
+  });
+  panel.querySelector('[data-assessment-next]')?.addEventListener('click', () => {
+    active.questionIndex = (active.questionIndex + 1) % questions.length;
+    active.selected = -1;
+    active.hintLevel = 0;
+    active.usedHint = false;
+    active.answered = false;
+    active.feedback = '';
+    renderLessonWorkbench();
+  });
+}
+
+function renderResumeCard(session) {
+  const card = byId('resume-session-card');
+  if (!card || !session) return;
+  const updated = session.updatedAt ? new Date(session.updatedAt).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '先前';
+  card.hidden = false;
+  card.innerHTML = `<div><span>${session.completed ? 'COMPLETED SESSION' : 'LOCAL AUTOSAVE'}</span><h2>${session.completed ? '這題已完成，可以再練一次' : '已接續上次的解題進度'}</h2><p>${session.title || '數獨練習'} · ${formatTime(Number(session.elapsed || 0))} · ${updated} 儲存。盤面、筆記與時間只保存在這個瀏覽器。</p></div><div><button type="button" data-session-continue>${session.completed ? '查看盤面' : '繼續這題'}</button><button type="button" data-session-restart>${session.completed ? '再練一次' : '從頭重做'}</button></div>`;
+  card.querySelector('[data-session-continue]').addEventListener('click', () => {
+    card.hidden = true;
+    byId('sudoku-board').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  card.querySelector('[data-session-restart]').addEventListener('click', () => {
+    loadPuzzle(session.record, session.title);
+    state.activeDrill = session.activeDrill ? DRILL_BY_TECHNIQUE.get(session.activeDrill) || null : null;
+    persistSession();
+    card.hidden = true;
+    showToast('已保留歷程並建立新的重做紀錄。', 'success');
+  });
+}
+
 function renderJourney() {
   const container = byId('journey-stages');
   if (!container) return;
@@ -425,12 +636,13 @@ function renderJourney() {
   byId('lesson-progress').textContent = `${completed.size} / ${ALL_LESSONS.length}`;
   byId('lesson-progress-bar').style.width = `${percent}%`;
   byId('detector-count').textContent = `${DETECTABLE_LESSONS.length} 種技巧`;
-  byId('drill-progress').textContent = `${state.learning.completedDrills.size} / ${TECHNIQUE_DRILLS.length}`;
+  const passedTargets = DETECTABLE_LESSONS.reduce((sum, lesson) => sum + lessonResult(lesson.id).passedQuestionIds.length, 0);
+  byId('drill-progress').textContent = `${passedTargets} / ${DETECTABLE_LESSONS.length * 3}`;
   byId('activity-count').textContent = `${state.learning.totalActivities} 次`;
 
   const continueCard = byId('continue-card');
   if (nextLesson) {
-    continueCard.innerHTML = `<div><span>下一個學習節點 · ${nextLesson.stageTitle}</span><h2>${nextLesson.name}</h2><p>${nextLesson.summary} ${nextLesson.cue}</p></div><button type="button" data-lesson-toggle="${nextLesson.id}">完成這一節</button>`;
+    continueCard.innerHTML = `<div><span>下一個學習節點 · ${nextLesson.stageTitle}</span><h2>${nextLesson.name}</h2><p>${nextLesson.summary} ${nextLesson.cue}</p></div><button type="button" data-lesson-open="${nextLesson.id}">開始教學</button>`;
   } else {
     continueCard.innerHTML = '<div><span>旅程完成</span><h2>你已走完全部學習節點</h2><p>下一步是用不同題型反覆練習，並檢查自己能否說明每個排除理由。</p></div><button type="button" data-practice="expert">挑戰一題</button>';
   }
@@ -443,8 +655,12 @@ function renderJourney() {
       const caution = lesson.caution ? '<span class="caution-badge">注意假設邊界</span>' : '';
       const drill = lesson.analyzer && DRILL_BY_TECHNIQUE.get(lesson.analyzer);
       const drillDone = drill && state.learning.completedDrills.has(drill.technique);
-      const drillButton = drill ? `<button class="drill-action ${drillDone ? 'passed' : ''}" type="button" data-technique-drill="${drill.technique}">${drillDone ? '已通過 · 再練' : '專項考題'}</button>` : '';
-      return `<li class="lesson-item ${done ? 'done' : ''}"><span class="lesson-state">${done ? '✓' : String(index + 1).padStart(2, '0')}</span><div class="lesson-copy"><h3>${lesson.name}${detector}${caution}</h3><p>${lesson.summary}</p><small>觀察口訣：${lesson.cue}</small></div><div class="lesson-actions">${drillButton}<button class="lesson-action" type="button" data-lesson-toggle="${lesson.id}">${done ? '取消完成' : '標記完成'}</button></div></li>`;
+      const result = lessonResult(lesson.id);
+      const targetCount = lesson.analyzer && lesson.analyzer !== 'search' ? getTechniqueQuestions(lesson.analyzer, 3).length : 0;
+      const passedCount = result.passedQuestionIds.filter((id) => id.startsWith(`${lesson.analyzer}-`)).length;
+      const drillButton = drill ? `<button class="drill-action ${drillDone ? 'passed' : ''}" type="button" data-technique-drill="${drill.technique}">${drillDone ? '已通過 · 再練' : '完整盤面題'}</button>` : '';
+      const mastery = targetCount ? `理解 ${result.knowledgePassed ? '✓' : '○'} · 定點 ${passedCount}/${targetCount}` : `理解 ${result.knowledgePassed ? '✓' : '○'}`;
+      return `<li class="lesson-item ${done ? 'done' : ''}"><span class="lesson-state">${done ? '✓' : String(index + 1).padStart(2, '0')}</span><div class="lesson-copy"><h3>${lesson.name}${detector}${caution}</h3><p>${lesson.summary}</p><small>觀察口訣：${lesson.cue}｜${mastery}</small></div><div class="lesson-actions">${drillButton}<button class="lesson-action" type="button" data-lesson-open="${lesson.id}">${done ? '複習教學' : '開始教學'}</button></div></li>`;
     }).join('');
     return `<section class="journey-stage"><header class="stage-heading"><span class="stage-number">${stage.number}</span><div class="stage-copy"><h2>${stage.title}</h2><p>${stage.description}</p></div><div class="stage-meta"><b>${stage.level} · ${completedInStage}/${stage.lessons.length}</b><small>${stage.gate}</small><button class="stage-practice" type="button" data-practice="${stage.difficulty}">練習此階段</button></div></header><ol class="lesson-list">${lessons}</ol><p class="stage-gate"><b>過關條件：</b>${stage.gate}</p></section>`;
   }).join('');
@@ -454,29 +670,20 @@ function renderJourney() {
     ? state.learning.activities.slice(0, 12).map((event) => `<li><time datetime="${event.at}">${new Date(event.at).toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' })} ${new Date(event.at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}</time><span>${event.detail}</span></li>`).join('')
     : '<li class="history-empty">尚無紀錄。完成課程、使用提示、分析或解完題目後會出現在這裡。</li>';
 
-  document.querySelectorAll('[data-lesson-toggle]').forEach((button) => button.addEventListener('click', () => {
-    const lesson = ALL_LESSONS.find((item) => item.id === button.dataset.lessonToggle);
-    if (!lesson) return;
-    if (completed.has(lesson.id)) {
-      completed.delete(lesson.id);
-      persistProgress();
-      renderJourney();
-    } else {
-      completed.add(lesson.id);
-      recordActivity('lesson', `完成課程「${lesson.name}」`);
-    }
-    renderProgress();
-  }));
+  document.querySelectorAll('[data-lesson-open]').forEach((button) => button.addEventListener('click', () => openLesson(button.dataset.lessonOpen)));
   document.querySelectorAll('[data-practice]').forEach((button) => button.addEventListener('click', () => {
     state.generatorDifficulty = button.dataset.practice;
     document.querySelectorAll('[data-difficulty]').forEach((item) => item.classList.toggle('selected', item.dataset.difficulty === state.generatorDifficulty));
     switchView('generator');
   }));
   document.querySelectorAll('[data-technique-drill]').forEach((button) => button.addEventListener('click', () => startTechniqueDrill(button.dataset.techniqueDrill)));
+  renderLessonWorkbench();
 }
 
 initializeBoard();
-loadPuzzle(generatePuzzle({ difficulty: 'easy', seed: 'WELCOME-001' }), '今日暖身題');
+if (pendingSession) restoreSession(pendingSession);
+else loadPuzzle(generatePuzzle({ difficulty: 'easy', seed: 'WELCOME-001' }), '今日暖身題');
+renderResumeCard(pendingSession);
 byId('seed-input').value = randomSeed();
 renderJourney();
 
@@ -509,6 +716,7 @@ byId('generate-btn').addEventListener('click', () => {
 });
 byId('use-current-btn').addEventListener('click', () => { byId('puzzle-input').value = serializeGrid(state.grid, '0'); });
 byId('analyze-btn').addEventListener('click', runAnalysis);
+window.addEventListener('pagehide', persistSession);
 
 document.addEventListener('keydown', (event) => {
   if (event.target.matches('input, textarea')) return;

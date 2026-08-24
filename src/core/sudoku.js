@@ -285,7 +285,7 @@ const SUBSET_NAMES = {
 
 const FISH_NAMES = { 2: 'xWing', 3: 'swordfish', 4: 'jellyfish' };
 
-export function logicalSolve(source) {
+export function logicalSolve(source, { includeSnapshots = false } = {}) {
   assertGrid(source);
   const initialValidation = validateGrid(source);
   if (!initialValidation.valid) return { solved: false, invalid: true, grid: [...source], steps: [], hardest: 'invalid' };
@@ -306,30 +306,55 @@ export function logicalSolve(source) {
     if (ranks[step.strategy] > ranks[hardest]) hardest = step.strategy;
   }
 
+  function snapshotState() {
+    if (!includeSnapshots) return null;
+    return {
+      grid: [...grid],
+      candidates: Array.from({ length: 81 }, (_, index) => [...(candidateMap.get(index) || [])].sort((a, b) => a - b))
+    };
+  }
+
   function place(index, digit, strategy, explanation, related = []) {
+    const snapshot = snapshotState();
     grid[index] = digit;
     candidateMap.delete(index);
     for (const peer of PEERS[index]) candidateMap.get(peer)?.delete(digit);
-    record({ kind: 'placement', strategy, index, digit, related, explanation });
+    record({ kind: 'placement', strategy, index, digit, related, explanation, ...(snapshot ? { snapshot } : {}) });
   }
 
   function eliminate(indices, digit, strategy, explanation, related = []) {
+    const snapshot = snapshotState();
     const changed = [];
     for (const index of indices) {
       if (candidateMap.get(index)?.delete(digit)) changed.push(index);
     }
-    if (changed.length) record({ kind: 'elimination', strategy, indices: changed, digit, related, explanation });
+    if (changed.length) record({
+      kind: 'elimination', strategy, indices: changed, digit, related, explanation,
+      eliminations: changed.map((index) => ({ index, digit })),
+      ...(snapshot ? { snapshot } : {})
+    });
     return changed.length > 0;
   }
 
   function eliminateMany(indices, digits, strategy, explanation, related = []) {
+    const snapshot = snapshotState();
     const changed = [];
+    const eliminations = [];
     for (const index of indices) {
       const values = candidateMap.get(index);
       if (!values) continue;
-      for (const digit of digits) if (values.delete(digit)) changed.push(index);
+      for (const digit of digits) {
+        if (values.delete(digit)) {
+          changed.push(index);
+          eliminations.push({ index, digit });
+        }
+      }
     }
-    if (changed.length) record({ kind: 'elimination', strategy, indices: [...new Set(changed)], digits, related, explanation });
+    if (changed.length) record({
+      kind: 'elimination', strategy, indices: [...new Set(changed)], digits, related, explanation,
+      eliminations,
+      ...(snapshot ? { snapshot } : {})
+    });
     return changed.length > 0;
   }
 
@@ -362,9 +387,16 @@ export function logicalSolve(source) {
           for (const digit of candidateMap.get(cell)) if (!digits.includes(digit)) removals.push({ cell, digit });
         }
         if (!removals.length) continue;
+        const snapshot = snapshotState();
         for (const { cell, digit } of removals) candidateMap.get(cell).delete(digit);
         const name = SUBSET_NAMES[size];
-        record({ kind: 'elimination', strategy: name.hidden, indices: [...new Set(removals.map(({ cell }) => cell))], digits, related: anchors, explanation: `${unitName(unitIndex)}中，${digits.join('、')} 只出現在這 ${size} 格，形成隱性${name.label}；這些格可移除其他候選數。` });
+        record({
+          kind: 'elimination', strategy: name.hidden, indices: [...new Set(removals.map(({ cell }) => cell))], digits,
+          related: anchors,
+          eliminations: removals.map(({ cell, digit }) => ({ index: cell, digit })),
+          explanation: `${unitName(unitIndex)}中，${digits.join('、')} 只出現在這 ${size} 格，形成隱性${name.label}；這些格可移除其他候選數。`,
+          ...(snapshot ? { snapshot } : {})
+        });
         return true;
       }
     }
