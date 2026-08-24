@@ -156,7 +156,20 @@ test('every targeted technique has three target-position questions with exact gr
       assert.equal(question.board.length, 81);
       assert.equal(question.candidates.length, 81);
       if (MANUAL_ASSESSMENT_TECHNIQUES.includes(technique)) {
-        assert.ok(question.board.some(Boolean), `${technique} should show puzzle givens`);
+        assert.equal(question.board.filter(Boolean).length, 30, `${technique} should show 30 mid-game givens`);
+        const unitCounts = Array.from({ length: 27 }, () => 0);
+        question.board.forEach((digit, index) => {
+          if (!digit) return;
+          const row = Math.floor(index / 9);
+          const col = index % 9;
+          const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
+          unitCounts[row] += 1;
+          unitCounts[9 + col] += 1;
+          unitCounts[18 + box] += 1;
+        });
+        assert.ok(unitCounts.every((count) => count >= 2 && count <= 5), `${technique} givens should be balanced across every row, column, and box`);
+        assert.match(question.variantLabel, /中盤技巧局面 · 30 個盤面數字/);
+        assert.match(question.instruction, /只顯示本題相關候選/);
         assert.equal(validateGrid(question.board).valid, true, `${technique} givens should be valid`);
         assert.equal(isSolved(question.solution), true, `${technique} should retain a compatible solution`);
         question.board.forEach((digit, index) => {

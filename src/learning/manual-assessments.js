@@ -1,4 +1,6 @@
-import { cellName } from '../core/sudoku.js?v=20260824-learning4';
+import { cellName } from '../core/sudoku.js?v=20260824-learning5';
+
+const CLUE_TARGET = 30;
 
 const indexOf = (row, col) => (row - 1) * 9 + col - 1;
 const cell = (row, col, digits) => ({ index: indexOf(row, col), digits });
@@ -153,13 +155,52 @@ function arePeers(left, right) {
     || (Math.floor(leftRow / 3) === Math.floor(rightRow / 3) && Math.floor(leftCol / 3) === Math.floor(rightCol / 3));
 }
 
-function createBaseBoard(solution, definition) {
-  const board = [...solution];
+function clueTieBreak(index, technique) {
+  const seed = [...technique].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 1009, 7);
+  return ((index + 1) * 37 + index * index * 13 + seed * 17) % 997;
+}
+
+function createBaseBoard(solution, definition, technique) {
+  const allowed = [...solution];
   for (const focus of Object.values(definition.cells)) {
-    board[focus.index] = 0;
+    allowed[focus.index] = 0;
     for (let index = 0; index < 81; index += 1) {
-      if (focus.digits.includes(solution[index]) && arePeers(focus.index, index)) board[index] = 0;
+      if (focus.digits.includes(solution[index]) && arePeers(focus.index, index)) allowed[index] = 0;
     }
+  }
+
+  const board = Array(81).fill(0);
+  const rowCounts = Array(9).fill(0);
+  const colCounts = Array(9).fill(0);
+  const boxCounts = Array(9).fill(0);
+  while (board.filter(Boolean).length < CLUE_TARGET) {
+    const available = allowed
+      .map((digit, index) => ({ digit, index }))
+      .filter(({ digit, index }) => digit && !board[index]);
+    available.sort((left, right) => {
+      const score = ({ index }) => {
+        const row = Math.floor(index / 9);
+        const col = index % 9;
+        const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
+        const underThree = Number(rowCounts[row] < 3) + Number(colCounts[col] < 3) + Number(boxCounts[box] < 3);
+        return [-underThree, Math.max(rowCounts[row], colCounts[col], boxCounts[box]), rowCounts[row] + colCounts[col] + boxCounts[box]];
+      };
+      const leftScore = score(left);
+      const rightScore = score(right);
+      for (let index = 0; index < leftScore.length; index += 1) {
+        if (leftScore[index] !== rightScore[index]) return leftScore[index] - rightScore[index];
+      }
+      return clueTieBreak(left.index, technique) - clueTieBreak(right.index, technique) || left.index - right.index;
+    });
+    const next = available[0];
+    if (!next) throw new Error(`無法為 ${technique} 建立 ${CLUE_TARGET} 格技巧局面`);
+    board[next.index] = next.digit;
+    const row = Math.floor(next.index / 9);
+    const col = next.index % 9;
+    const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
+    rowCounts[row] += 1;
+    colCounts[col] += 1;
+    boxCounts[box] += 1;
   }
   return board;
 }
@@ -177,7 +218,7 @@ function transformedIndex(source, transform) {
 
 function createQuestion(technique, definition, transform, variant) {
   const baseSolution = [...SOLUTIONS[technique]].map(Number);
-  const baseBoard = createBaseBoard(baseSolution, definition);
+  const baseBoard = createBaseBoard(baseSolution, definition, technique);
   const board = Array(81).fill(0);
   const solution = Array(81).fill(0);
   const candidates = Array.from({ length: 81 }, () => []);
@@ -198,12 +239,12 @@ function createQuestion(technique, definition, transform, variant) {
   const number = (digit) => shifted(digit, transform.shift);
   return Object.freeze({
     id: `${technique}-${variant + 1}-focus`, technique, variant: variant + 1,
-    variantLabel: `${transform.label} · 題目數字＋目前候選`, kind: definition.kind,
+    variantLabel: `${transform.label} · 中盤技巧局面 · ${CLUE_TARGET} 個盤面數字`, kind: definition.kind,
     board: Object.freeze(board), boardKey: `${technique}-${variant + 1}`,
     solution: Object.freeze(solution),
     candidates: Object.freeze(candidates.map((values) => Object.freeze(values))),
     prompt: definition.prompt(number),
-    instruction: definition.kind === 'placement' ? '先點選指定目標格，再按下應填入的數字。' : '先點選可排除候選的指定格，再按下該候選數。',
+    instruction: `這是中盤技巧局面，只顯示本題相關候選。${definition.kind === 'placement' ? '先點選指定目標格，再按下應填入的數字。' : '先點選可排除候選的指定格，再按下該候選數。'}`,
     answers: Object.freeze(answers.map(Object.freeze)),
     related: Object.freeze(definition.related.map((name) => positions[name])),
     explanation: definition.explain(place, number),
