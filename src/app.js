@@ -7,12 +7,13 @@ import {
   cellName,
   generatePuzzle,
   getCompletedDigits,
+  getWrongEntries,
   isSolved,
   suggestNextMoves,
   parsePuzzle,
   serializeGrid,
   validateGrid
-} from './core/sudoku.js?v=20260824-advanced1';
+} from './core/sudoku.js?v=20260824-mobile1';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-advanced1';
 import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-advanced1';
 import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-advanced1';
@@ -265,7 +266,9 @@ function renderBoard() {
       }
       cell.append(notes);
     }
-    cell.setAttribute('aria-label', `${cellName(index)}${value ? `，數字 ${value}` : '，空格'}`);
+    const errorLabel = state.wrong.has(index) ? '，答案錯誤' : state.conflicts.has(index) ? '，與同行、同列或同宮重複' : '';
+    cell.setAttribute('aria-label', `${cellName(index)}${value ? `，數字 ${value}` : '，空格'}${errorLabel}`);
+    cell.setAttribute('aria-invalid', errorLabel ? 'true' : 'false');
     cell.setAttribute('aria-selected', index === state.selected ? 'true' : 'false');
   }
   document.querySelectorAll('[data-number]').forEach((button) => {
@@ -356,7 +359,7 @@ function toggleAllNotes() {
 function updateValidation() {
   const validation = validateGrid(state.grid);
   state.conflicts = new Set(validation.conflicts);
-  state.wrong.clear();
+  state.wrong = new Set(getWrongEntries(state.grid, state.record.solution));
   return validation;
 }
 
@@ -364,11 +367,13 @@ function enterNumber(digit) {
   const index = state.selected;
   if (index < 0 || state.record.puzzle[index] || state.completed) return;
   const hadSuggestions = state.suggestions.length > 0;
+  const wasWrong = state.wrong.has(index);
   saveHistory();
   state.hint = null;
   state.suggestions = [];
   byId('apply-hint-btn').hidden = true;
-  if (state.notesMode && !state.grid[index]) {
+  const isNoteAction = state.notesMode && !state.grid[index];
+  if (isNoteAction) {
     if (state.notes[index].has(digit)) state.notes[index].delete(digit);
     else state.notes[index].add(digit);
   } else {
@@ -377,11 +382,18 @@ function enterNumber(digit) {
     for (const peer of PEERS[index]) state.notes[peer].delete(digit);
   }
   const validation = updateValidation();
+  const wrongEntry = !isNoteAction && state.wrong.has(index);
   renderBoard();
   persistSession();
-  if (!validation.valid) showToast('這個數字與同一單位中的數字重複。', 'warning');
+  if (wrongEntry) {
+    setCoach('立即檢查', `${cellName(index)} 的 ${digit} 不正確`, '這一格已標紅；請重新檢查它所在的行、列與九宮候選。', '系統只指出這一步不符合本題唯一解，不會直接洩漏正確答案。');
+    showToast(`${cellName(index)} 填入 ${digit} 不正確，已標紅。`, 'warning');
+  } else if (wasWrong) {
+    setCoach('立即檢查', `${cellName(index)} 已修正`, '紅色錯誤標記已移除，可以繼續解題。', '這個數字現在符合本題唯一解。');
+    showToast(`${cellName(index)} 已修正。`, 'success');
+  } else if (!validation.valid) showToast('這個數字與同一單位中的數字重複。', 'warning');
   if (isSolved(state.grid)) completePuzzle();
-  else if (hadSuggestions) setCoach('盤面已更新', '先前的建議已失效', '每次填數都會改變候選集合；請先觀察連鎖效果，再重新分析下一手。');
+  else if (hadSuggestions && !wrongEntry && !wasWrong && validation.valid) setCoach('盤面已更新', '先前的建議已失效', '每次填數都會改變候選集合；請先觀察連鎖效果，再重新分析下一手。');
 }
 
 function eraseSelected() {
@@ -482,7 +494,6 @@ function checkAnswer() {
   if (!validation.valid) {
     showToast(`找到 ${validation.conflicts.length} 個衝突格。`, 'warning');
   } else {
-    state.wrong = new Set(state.grid.map((value, index) => value && value !== state.record.solution[index] ? index : -1).filter((index) => index >= 0));
     if (state.wrong.size) showToast(`有 ${state.wrong.size} 格不符合這題的唯一解。`, 'warning');
     else if (isSolved(state.grid)) completePuzzle();
     else showToast('目前填入的答案都正確，可以繼續。', 'success');

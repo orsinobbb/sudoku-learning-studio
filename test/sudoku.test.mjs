@@ -8,6 +8,7 @@ import {
   generatePuzzle,
   generateSolution,
   getCompletedDigits,
+  getWrongEntries,
   isSolved,
   nextHint,
   parsePuzzle,
@@ -35,6 +36,18 @@ test('parses and serializes 81-cell puzzle formats', () => {
   assert.deepEqual(parsePuzzle(dotted), classic);
   assert.equal(serializeGrid(classic).length, 81);
   assert.throws(() => parsePuzzle('123'), /81 格/);
+});
+
+test('tracks wrong entries immediately and clears them after correction or erase', () => {
+  const solution = solveGrid(classic);
+  const index = classic.findIndex((value) => value === 0);
+  const grid = [...classic];
+  grid[index] = solution[index] === 9 ? 8 : solution[index] + 1;
+  assert.deepEqual(getWrongEntries(grid, solution), [index]);
+  grid[index] = solution[index];
+  assert.deepEqual(getWrongEntries(grid, solution), []);
+  grid[index] = 0;
+  assert.deepEqual(getWrongEntries(grid, solution), []);
 });
 
 test('builds legal candidate notes for every empty cell', () => {

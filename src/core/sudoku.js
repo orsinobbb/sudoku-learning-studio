@@ -94,6 +94,14 @@ export function getCompletedDigits(grid, solution = null) {
   });
 }
 
+export function getWrongEntries(grid, solution) {
+  assertGrid(grid);
+  assertGrid(solution);
+  return grid
+    .map((value, index) => value && value !== solution[index] ? index : -1)
+    .filter((index) => index >= 0);
+}
+
 function makeMasks(grid) {
   const rows = Array(9).fill(0);
   const cols = Array(9).fill(0);
