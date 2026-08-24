@@ -14,7 +14,7 @@ import {
   solveGrid,
   validateGrid
 } from '../src/core/sudoku.js';
-import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES } from '../src/learning/curriculum.js';
+import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS } from '../src/learning/curriculum.js';
 import { TECHNIQUE_DRILLS } from '../src/learning/drills.js';
 import { evaluateTechniqueAnswer, getTechniqueQuestions } from '../src/learning/assessments.js';
 import { TUTORIALS } from '../src/learning/tutorials.js';
@@ -102,6 +102,7 @@ test('learning journey is complete, ordered and linked to detector coverage', ()
   assert.equal(JOURNEY_STAGES.length, 6);
   assert.equal(ALL_LESSONS.length, 34);
   assert.equal(DETECTABLE_LESSONS.length, 15);
+  assert.equal(TARGETED_LESSONS.length, 31);
   assert.equal(new Set(ALL_LESSONS.map(({ id }) => id)).size, ALL_LESSONS.length);
   assert.ok(JOURNEY_STAGES.every((stage) => stage.gate && stage.lessons.length >= 2));
 });
@@ -139,16 +140,18 @@ test('every lesson has complete teaching content and a knowledge check', () => {
   }
 });
 
-test('every detectable technique has three target-position questions with exact grading', () => {
-  for (const lesson of DETECTABLE_LESSONS) {
-    const questions = getTechniqueQuestions(lesson.analyzer, 3);
-    assert.equal(questions.length, 3, `${lesson.analyzer} should have three variants`);
+test('every targeted technique has three target-position questions with exact grading', () => {
+  for (const lesson of TARGETED_LESSONS) {
+    const technique = lesson.assessment || lesson.analyzer;
+    const questions = getTechniqueQuestions(technique, 3);
+    assert.equal(questions.length, 3, `${technique} should have three variants`);
     assert.equal(new Set(questions.map(({ boardKey }) => boardKey)).size, 3);
     for (const question of questions) {
       const answer = question.answers[0];
       assert.equal(evaluateTechniqueAnswer(question, answer.index, answer.digit), true);
-      const givenIndex = question.board.findIndex(Boolean);
-      assert.equal(evaluateTechniqueAnswer(question, givenIndex, question.board[givenIndex]), false);
+      assert.ok(question.candidates[answer.index].includes(answer.digit), `${technique} answer must be visible in target candidates`);
+      const wrongIndex = question.answers[0].index === 0 ? 1 : 0;
+      assert.equal(evaluateTechniqueAnswer(question, wrongIndex, question.answers[0].digit), false);
       assert.equal(question.board.length, 81);
       assert.equal(question.candidates.length, 81);
     }

@@ -11,18 +11,19 @@ import {
   parsePuzzle,
   serializeGrid,
   validateGrid
-} from './core/sudoku.js?v=20260824-learning2';
-import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-learning2';
-import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-learning2';
-import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-learning2';
-import { getTutorial } from './learning/tutorials.js?v=20260824-learning2';
-import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260824-learning2';
+} from './core/sudoku.js?v=20260824-learning3';
+import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-learning3';
+import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-learning3';
+import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-learning3';
+import { getTutorial } from './learning/tutorials.js?v=20260824-learning3';
+import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260824-learning3';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
 const coachContent = byId('coach-content');
 const toast = byId('toast');
 const strategyNames = TECHNIQUE_NAMES;
+const assessmentTechnique = (lesson) => lesson.assessment || (lesson.analyzer !== 'search' ? lesson.analyzer : null);
 
 const storedProgress = readProgress();
 const pendingSession = readSession();
@@ -480,7 +481,8 @@ function runAnalysis() {
 
 function syncLessonCompletion(lesson) {
   const result = lessonResult(lesson.id);
-  const questionCount = lesson.analyzer && lesson.analyzer !== 'search' ? getTechniqueQuestions(lesson.analyzer, 3).length : 0;
+  const technique = assessmentTechnique(lesson);
+  const questionCount = technique ? getTechniqueQuestions(technique, 3).length : 0;
   const passed = result.knowledgePassed && (!questionCount || result.passedQuestionIds.length >= questionCount);
   if (passed && !state.learning.completedLessons.has(lesson.id)) {
     state.learning.completedLessons.add(lesson.id);
@@ -534,7 +536,8 @@ function renderLessonWorkbench() {
   const content = getTutorial(active.id);
   if (!lesson || !content) return;
   const result = lessonResult(lesson.id);
-  const questions = lesson.analyzer && lesson.analyzer !== 'search' ? getTechniqueQuestions(lesson.analyzer, 3) : [];
+  const technique = assessmentTechnique(lesson);
+  const questions = technique ? getTechniqueQuestions(technique, 3) : [];
   const question = questions[active.questionIndex] || null;
   const checkMarkup = `<div class="knowledge-check"><span>理解檢核</span><h3>${content.check.prompt}</h3><div class="choice-list">${content.check.choices.map((choice, index) => `<button type="button" data-check-answer="${index}">${choice}</button>`).join('')}</div>${active.knowledgeFeedback ? `<p class="check-feedback">${active.knowledgeFeedback}</p>` : ''}${result.knowledgePassed ? '<b class="pass-note">✓ 已通過理解檢核</b>' : ''}</div>`;
   let assessmentMarkup = '<div class="assessment-empty"><b>本節為觀念教材</b><p>完成理解檢核即可通過；分析器尚未假裝能自動辨識這項進階技巧。</p></div>';
@@ -636,8 +639,9 @@ function renderJourney() {
   byId('lesson-progress').textContent = `${completed.size} / ${ALL_LESSONS.length}`;
   byId('lesson-progress-bar').style.width = `${percent}%`;
   byId('detector-count').textContent = `${DETECTABLE_LESSONS.length} 種技巧`;
-  const passedTargets = DETECTABLE_LESSONS.reduce((sum, lesson) => sum + lessonResult(lesson.id).passedQuestionIds.length, 0);
-  byId('drill-progress').textContent = `${passedTargets} / ${DETECTABLE_LESSONS.length * 3}`;
+  const totalTargets = TARGETED_LESSONS.reduce((sum, lesson) => sum + getTechniqueQuestions(assessmentTechnique(lesson), 3).length, 0);
+  const passedTargets = TARGETED_LESSONS.reduce((sum, lesson) => sum + lessonResult(lesson.id).passedQuestionIds.length, 0);
+  byId('drill-progress').textContent = `${passedTargets} / ${totalTargets}`;
   byId('activity-count').textContent = `${state.learning.totalActivities} 次`;
 
   const continueCard = byId('continue-card');
@@ -651,13 +655,14 @@ function renderJourney() {
     const completedInStage = stage.lessons.filter((lesson) => completed.has(lesson.id)).length;
     const lessons = stage.lessons.map((lesson, index) => {
       const done = completed.has(lesson.id);
-      const detector = lesson.analyzer && lesson.analyzer !== 'search' ? '<span class="detector-badge">分析器可辨識</span>' : '<span class="detector-badge">教材涵蓋</span>';
+      const detector = lesson.analyzer && lesson.analyzer !== 'search' ? '<span class="detector-badge">分析器可辨識</span>' : lesson.assessment ? '<span class="detector-badge">定點題可練</span>' : '<span class="detector-badge">教材涵蓋</span>';
       const caution = lesson.caution ? '<span class="caution-badge">注意假設邊界</span>' : '';
       const drill = lesson.analyzer && DRILL_BY_TECHNIQUE.get(lesson.analyzer);
       const drillDone = drill && state.learning.completedDrills.has(drill.technique);
       const result = lessonResult(lesson.id);
-      const targetCount = lesson.analyzer && lesson.analyzer !== 'search' ? getTechniqueQuestions(lesson.analyzer, 3).length : 0;
-      const passedCount = result.passedQuestionIds.filter((id) => id.startsWith(`${lesson.analyzer}-`)).length;
+      const technique = assessmentTechnique(lesson);
+      const targetCount = technique ? getTechniqueQuestions(technique, 3).length : 0;
+      const passedCount = technique ? result.passedQuestionIds.filter((id) => id.startsWith(`${technique}-`)).length : 0;
       const drillButton = drill ? `<button class="drill-action ${drillDone ? 'passed' : ''}" type="button" data-technique-drill="${drill.technique}">${drillDone ? '已通過 · 再練' : '完整盤面題'}</button>` : '';
       const mastery = targetCount ? `理解 ${result.knowledgePassed ? '✓' : '○'} · 定點 ${passedCount}/${targetCount}` : `理解 ${result.knowledgePassed ? '✓' : '○'}`;
       return `<li class="lesson-item ${done ? 'done' : ''}"><span class="lesson-state">${done ? '✓' : String(index + 1).padStart(2, '0')}</span><div class="lesson-copy"><h3>${lesson.name}${detector}${caution}</h3><p>${lesson.summary}</p><small>觀察口訣：${lesson.cue}｜${mastery}</small></div><div class="lesson-actions">${drillButton}<button class="lesson-action" type="button" data-lesson-open="${lesson.id}">${done ? '複習教學' : '開始教學'}</button></div></li>`;

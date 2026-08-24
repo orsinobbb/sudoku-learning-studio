@@ -1,5 +1,6 @@
-import { cellName, logicalSolve, parsePuzzle, serializeGrid } from '../core/sudoku.js?v=20260824-learning2';
-import { DRILL_BY_TECHNIQUE } from './drills.js?v=20260824-learning2';
+import { cellName, logicalSolve, parsePuzzle, serializeGrid } from '../core/sudoku.js?v=20260824-learning3';
+import { DRILL_BY_TECHNIQUE } from './drills.js?v=20260824-learning3';
+import { getManualTechniqueQuestions } from './manual-assessments.js?v=20260824-learning3';
 
 const TRANSFORMS = [
   { id: 'original', label: '原始盤面', map: (row, col) => [row, col], shift: 0 },
@@ -70,7 +71,11 @@ export function getTechniqueQuestions(technique, count = 3) {
   const key = `${technique}:${count}`;
   if (questionCache.has(key)) return questionCache.get(key);
   const drill = DRILL_BY_TECHNIQUE.get(technique);
-  if (!drill) return [];
+  if (!drill) {
+    const manualQuestions = getManualTechniqueQuestions(technique, count);
+    questionCache.set(key, manualQuestions);
+    return manualQuestions;
+  }
   const questions = [];
   const seenBoards = new Set();
   for (const transform of TRANSFORMS) {
