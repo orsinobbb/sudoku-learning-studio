@@ -28,6 +28,17 @@ import {
 } from '../src/learning/manual-assessments.js';
 import { TUTORIALS } from '../src/learning/tutorials.js';
 import { PROGRESS_KEY, SESSION_KEY, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
+import {
+  clearTrials,
+  confirmTrials,
+  createTrialState,
+  hasTrialChanges,
+  markTrialCell,
+  pauseTrial,
+  snapshotTrialState,
+  startTrial,
+  trialCounts
+} from '../src/core/trial.js';
 
 const classic = parsePuzzle('530070000600195000098000060800060003400803001700020006060000280000419005000080079');
 
@@ -329,4 +340,60 @@ test('progress migrates and puzzle sessions round-trip through browser storage',
   writeSession({ id: 'one', record, grid: record.puzzle, notes: Array.from({ length: 81 }, () => []), elapsed: 42 }, storage);
   assert.equal(readSession(storage).elapsed, 42);
   assert.equal(JSON.parse(values.get(SESSION_KEY)).version, 1);
+});
+
+test('two trial colors survive serialization and paused state', () => {
+  const grid = Array(81).fill(0);
+  const notes = Array.from({ length: 81 }, () => new Set());
+  const trial = createTrialState();
+  startTrial(trial, 1, grid, notes);
+  markTrialCell(trial, 0);
+  grid[0] = 4;
+  startTrial(trial, 2, grid, notes);
+  markTrialCell(trial, 10);
+  grid[10] = 7;
+  pauseTrial(trial);
+  const restored = createTrialState(snapshotTrialState(trial));
+  assert.deepEqual(trialCounts(restored), { 1: 1, 2: 1 });
+  assert.equal(restored.active, 0);
+  assert.equal(restored.focus, 2);
+  assert.equal(hasTrialChanges(restored), true);
+});
+
+test('clearing trials restores the exact pre-trial grid and notes', () => {
+  const grid = Array(81).fill(0);
+  grid[3] = 6;
+  const notes = Array.from({ length: 81 }, () => new Set());
+  notes[0] = new Set([1, 2, 5]);
+  notes[8] = new Set([5, 9]);
+  const trial = createTrialState();
+  startTrial(trial, 1, grid, notes);
+  markTrialCell(trial, 0);
+  grid[0] = 5;
+  notes[0].clear();
+  notes[8].delete(5);
+  startTrial(trial, 2, grid, notes);
+  markTrialCell(trial, 0);
+  grid[0] = 9;
+  clearTrials(trial, grid, notes);
+  assert.equal(grid[0], 0);
+  assert.equal(grid[3], 6);
+  assert.deepEqual([...notes[0]], [1, 2, 5]);
+  assert.deepEqual([...notes[8]], [5, 9]);
+  assert.equal(hasTrialChanges(trial), false);
+  assert.equal(trial.baseline, null);
+});
+
+test('confirming trials keeps entries and rejects a third color', () => {
+  const grid = Array(81).fill(0);
+  const notes = Array.from({ length: 81 }, () => new Set());
+  const trial = createTrialState();
+  startTrial(trial, 1, grid, notes);
+  markTrialCell(trial, 4);
+  grid[4] = 8;
+  assert.throws(() => startTrial(trial, 3, grid, notes), RangeError);
+  confirmTrials(trial);
+  assert.equal(grid[4], 8);
+  assert.equal(hasTrialChanges(trial), false);
+  assert.equal(trial.active, 0);
 });

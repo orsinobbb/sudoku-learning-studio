@@ -14,6 +14,17 @@ import {
   serializeGrid,
   validateGrid
 } from './core/sudoku.js?v=20260824-mobile1';
+import {
+  clearTrials,
+  confirmTrials,
+  createTrialState,
+  hasTrialChanges,
+  markTrialCell,
+  pauseTrial,
+  snapshotTrialState,
+  startTrial,
+  trialCounts
+} from './core/trial.js?v=20260825-trial1';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-advanced1';
 import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-advanced1';
 import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-advanced1';
@@ -46,6 +57,7 @@ const state = {
   notes: Array.from({ length: 81 }, () => new Set()),
   selected: -1,
   notesMode: false,
+  trial: createTrialState(),
   history: [],
   conflicts: new Set(),
   wrong: new Set(),
@@ -91,6 +103,7 @@ function persistSession() {
     record: state.record,
     grid: state.grid,
     notes: state.notes.map((values) => [...values]),
+    trial: snapshotTrialState(state.trial),
     selected: state.selected,
     elapsed: state.elapsed,
     completed: state.completed,
@@ -242,6 +255,9 @@ function renderBoard() {
     cell.className = 'sudoku-cell';
     if (given.has(index)) cell.classList.add('given');
     else if (value) cell.classList.add('entered');
+    const trialColor = state.trial.marks[index];
+    if (trialColor === 1) cell.classList.add('trial-one');
+    if (trialColor === 2) cell.classList.add('trial-two');
     if (index === state.selected) cell.classList.add('selected');
     else if (isPeer) cell.classList.add('peer');
     if (selectedValue && value === selectedValue) cell.classList.add('same-number');
@@ -266,8 +282,9 @@ function renderBoard() {
       }
       cell.append(notes);
     }
+    const trialLabel = trialColor === 1 ? '，藍色 A 試填' : trialColor === 2 ? '，紫色 B 試填' : '';
     const errorLabel = state.wrong.has(index) ? '，答案錯誤' : state.conflicts.has(index) ? '，與同行、同列或同宮重複' : '';
-    cell.setAttribute('aria-label', `${cellName(index)}${value ? `，數字 ${value}` : '，空格'}${errorLabel}`);
+    cell.setAttribute('aria-label', `${cellName(index)}${value ? `，數字 ${value}` : '，空格'}${trialLabel}${errorLabel}`);
     cell.setAttribute('aria-invalid', errorLabel ? 'true' : 'false');
     cell.setAttribute('aria-selected', index === state.selected ? 'true' : 'false');
   }
@@ -288,6 +305,7 @@ function renderBoard() {
   allNotesButton.querySelector('b').textContent = notesAreComplete ? '清' : '填';
   allNotesButton.setAttribute('aria-label', notesAreComplete ? '清除全部候選筆記' : '填入全部合法候選筆記');
   allNotesButton.title = notesAreComplete ? '清除全盤候選筆記' : '依目前盤面填入每個空格的合法候選數';
+  renderTrialControls();
   renderProgress();
 }
 
@@ -310,7 +328,8 @@ function selectCell(index) {
   if (state.record.puzzle[index]) {
     setCoach('盤面觀察', `${cellName(index)}是題目線索`, `數字 ${value} 是出題時給定的條件，不能修改。`, '觀察它如何排除同行、同列與同宮的相同數字。');
   } else if (value) {
-    setCoach('你的作答', `${cellName(index)}填了 ${value}`, '你可以檢查它是否與同一橫列、直行或九宮中的數字重複。', '沒有重複不一定代表答案正確，但表示目前符合基本規則。');
+    const trialLabel = state.trial.marks[index] === 1 ? '藍色 A 試填' : state.trial.marks[index] === 2 ? '紫色 B 試填' : '';
+    setCoach(trialLabel || '你的作答', `${cellName(index)}填了 ${value}`, trialLabel ? '這是尚未轉正的試填數字；可比較推理結果後整批轉正或清除。' : '你可以檢查它是否與同一橫列、直行或九宮中的數字重複。', '沒有重複不一定代表答案正確，但表示目前符合基本規則。');
   } else {
     const candidates = candidatesFor(state.grid, index);
     setCoach('候選數觀察', `${cellName(index)}有 ${candidates.length} 個可能`, candidates.length ? `目前可填：${candidates.join('、')}。` : '這一格已經沒有可用數字，請檢查前面的作答。', '候選數是排除同行、同列與同宮已出現數字後，剩下的可能。');
@@ -319,13 +338,96 @@ function selectCell(index) {
 }
 
 function saveHistory() {
-  state.history.push({ grid: [...state.grid], notes: state.notes.map((set) => [...set]) });
+  state.history.push({ grid: [...state.grid], notes: state.notes.map((set) => [...set]), trial: snapshotTrialState(state.trial) });
   if (state.history.length > 100) state.history.shift();
+}
+
+function renderTrialControls() {
+  const panel = byId('trial-panel');
+  const button = byId('trial-btn');
+  const counts = trialCounts(state.trial);
+  const changed = hasTrialChanges(state.trial);
+  const hasWrongTrial = state.trial.marks.some((color, index) => color && state.wrong.has(index));
+  const activeLabel = state.trial.active === 1 ? '藍色 A' : state.trial.active === 2 ? '紫色 B' : '';
+  panel.hidden = !state.trial.active && !changed;
+  button.classList.toggle('active', Boolean(state.trial.active));
+  button.querySelector('b').textContent = state.trial.active ? (state.trial.active === 1 ? 'A' : 'B') : changed ? '留' : '關';
+  button.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+  document.querySelectorAll('[data-trial-color]').forEach((colorButton) => {
+    colorButton.classList.toggle('active', Number(colorButton.dataset.trialColor) === state.trial.active);
+  });
+  byId('trial-status').textContent = state.trial.active ? `${activeLabel} 試填中` : '試填已保留';
+  byId('trial-summary').textContent = changed
+    ? `藍色 A ${counts[1]} 格、紫色 B ${counts[2]} 格${state.trial.active ? '；可切換顏色繼續。' : '；請選擇續填、轉正或清除。'}`
+    : '選擇藍色 A 或紫色 B，試填數字不會立刻轉正。';
+  byId('trial-confirm-btn').disabled = !changed || hasWrongTrial;
+  byId('trial-confirm-btn').title = hasWrongTrial ? '請先修正紅色錯誤格' : '保留數字並移除所有試填顏色';
+  byId('trial-keep-btn').disabled = !state.trial.active;
+  byId('trial-keep-btn').textContent = state.trial.active ? '保留退出' : '已保留';
+  byId('trial-clear-btn').disabled = !changed;
+}
+
+function activateTrial(color = state.trial.focus) {
+  if (state.completed) return showToast('題目已完成，無法開始試填。');
+  startTrial(state.trial, color, state.grid, state.notes);
+  state.notesMode = false;
+  byId('notes-btn').classList.remove('active');
+  byId('notes-btn').querySelector('b').textContent = '關';
+  renderBoard();
+  persistSession();
+  const label = color === 1 ? '藍色 A' : '紫色 B';
+  setCoach('試填模式', `${label}已啟用`, '接下來輸入或清除的格子會保留特殊顏色；A、B 最多兩種，可隨時切換。', '全部轉正會保留數字並移除顏色；清除試填會完整回到開始試填前的盤面。');
+}
+
+function keepTrialChanges({ wrong = false } = {}) {
+  pauseTrial(state.trial);
+  renderBoard();
+  persistSession();
+  if (!wrong) {
+    setCoach('試填已保留', '暫時離開試填模式', '藍色 A 與紫色 B 仍保留在盤面；點「試填」可繼續，或選擇全部轉正、清除試填。', '保留期間暫停一般填數，避免清除試填時誤動到正式作答。');
+    showToast('已保留試填內容並暫停試填。');
+  }
+}
+
+function confirmTrialChanges() {
+  if (!hasTrialChanges(state.trial)) return showToast('目前沒有可轉正的試填內容。');
+  if (state.trial.marks.some((color, index) => color && state.wrong.has(index))) return showToast('請先修正紅色錯誤格，再將試填轉正。', 'warning');
+  const counts = trialCounts(state.trial);
+  saveHistory();
+  confirmTrials(state.trial);
+  renderBoard();
+  persistSession();
+  setCoach('試填已轉正', '所有試填一次轉為正式作答', `藍色 A ${counts[1]} 格、紫色 B ${counts[2]} 格已移除試填標記，數字與筆記均保留。`, '若需要撤回，可按一次「復原」。');
+  showToast('所有試填已一次轉正。', 'success');
+}
+
+function clearTrialChanges() {
+  if (!hasTrialChanges(state.trial)) return showToast('目前沒有可清除的試填內容。');
+  saveHistory();
+  clearTrials(state.trial, state.grid, state.notes);
+  state.hint = null;
+  state.suggestions = [];
+  updateValidation();
+  renderBoard();
+  persistSession();
+  setCoach('試填已清除', '盤面已還原', '所有藍色 A、紫色 B 的試填內容與其造成的候選筆記變化，都已回到開始試填前。', '若想取回剛才的試填，可按一次「復原」。');
+  showToast('試填內容已清除，盤面已還原。');
+}
+
+function trialInputIsPaused() {
+  if (state.trial.active || !hasTrialChanges(state.trial)) return false;
+  showToast('試填已暫停，請先續填、轉正或清除。', 'warning');
+  renderTrialControls();
+  return true;
 }
 
 function toggleAllNotes() {
   if (state.completed || !state.grid.some((value) => !value)) {
     showToast('題目已完成，沒有空格需要筆記。');
+    return;
+  }
+  if (state.trial.active || hasTrialChanges(state.trial)) {
+    showToast('請先將試填轉正或清除，再使用全筆記。', 'warning');
     return;
   }
   const validation = updateValidation();
@@ -366,6 +468,7 @@ function updateValidation() {
 function enterNumber(digit) {
   const index = state.selected;
   if (index < 0 || state.record.puzzle[index] || state.completed) return;
+  if (trialInputIsPaused()) return;
   const hadSuggestions = state.suggestions.length > 0;
   const wasWrong = state.wrong.has(index);
   saveHistory();
@@ -373,6 +476,7 @@ function enterNumber(digit) {
   state.suggestions = [];
   byId('apply-hint-btn').hidden = true;
   const isNoteAction = state.notesMode && !state.grid[index];
+  if (state.trial.active) markTrialCell(state.trial, index);
   if (isNoteAction) {
     if (state.notes[index].has(digit)) state.notes[index].delete(digit);
     else state.notes[index].add(digit);
@@ -383,9 +487,14 @@ function enterNumber(digit) {
   }
   const validation = updateValidation();
   const wrongEntry = !isNoteAction && state.wrong.has(index);
+  const wrongTrialEntry = wrongEntry && Boolean(state.trial.marks[index]);
+  if (wrongTrialEntry) pauseTrial(state.trial);
   renderBoard();
   persistSession();
-  if (wrongEntry) {
+  if (wrongTrialEntry) {
+    setCoach('試填發現錯誤', `${cellName(index)} 的 ${digit} 不正確`, '這一格已標紅，試填模式也已暫停；目前 A、B 試填內容都仍保留。', '你可以檢查推理後續填，或直接選擇「清除試填」回到試填前盤面。');
+    showToast('發現試填錯誤，已暫停並保留試填內容。', 'warning');
+  } else if (wrongEntry) {
     setCoach('立即檢查', `${cellName(index)} 的 ${digit} 不正確`, '這一格已標紅；請重新檢查它所在的行、列與九宮候選。', '系統只指出這一步不符合本題唯一解，不會直接洩漏正確答案。');
     showToast(`${cellName(index)} 填入 ${digit} 不正確，已標紅。`, 'warning');
   } else if (wasWrong) {
@@ -399,7 +508,9 @@ function enterNumber(digit) {
 function eraseSelected() {
   const index = state.selected;
   if (index < 0 || state.record.puzzle[index] || state.completed) return;
+  if (trialInputIsPaused()) return;
   saveHistory();
+  if (state.trial.active) markTrialCell(state.trial, index);
   state.grid[index] = 0;
   state.notes[index].clear();
   state.hint = null;
@@ -414,6 +525,7 @@ function undo() {
   if (!snapshot || state.completed) return showToast('目前沒有可復原的動作。');
   state.grid = snapshot.grid;
   state.notes = snapshot.notes.map((values) => new Set(values));
+  state.trial = createTrialState(snapshot.trial);
   state.hint = null;
   state.suggestions = [];
   updateValidation();
@@ -426,6 +538,7 @@ function resetPuzzle() {
   saveHistory();
   state.grid = [...state.record.puzzle];
   state.notes = Array.from({ length: 81 }, () => new Set());
+  state.trial = createTrialState();
   state.elapsed = 0;
   state.selected = -1;
   state.hint = null;
@@ -438,6 +551,7 @@ function resetPuzzle() {
 
 function completePuzzle() {
   if (state.completed) return;
+  confirmTrials(state.trial);
   state.completed = true;
   state.solvedCount += 1;
   if (state.activeDrill) {
@@ -505,6 +619,7 @@ function loadPuzzle(record, title = '', { persist = true } = {}) {
   state.record = record;
   state.grid = [...record.puzzle];
   state.notes = Array.from({ length: 81 }, () => new Set());
+  state.trial = createTrialState();
   state.history = [];
   state.selected = -1;
   state.conflicts.clear();
@@ -530,6 +645,7 @@ function restoreSession(session) {
   state.record = session.record;
   state.grid = [...session.grid];
   state.notes = Array.from({ length: 81 }, (_, index) => new Set(Array.isArray(session.notes?.[index]) ? session.notes[index] : []));
+  state.trial = createTrialState(session.trial);
   state.history = [];
   state.selected = Number.isInteger(session.selected) ? session.selected : -1;
   state.conflicts = new Set();
@@ -546,7 +662,8 @@ function restoreSession(session) {
   byId('puzzle-title').textContent = state.title;
   byId('apply-hint-btn').hidden = true;
   updateValidation();
-  setCoach(state.completed ? '已完成' : '繼續作答', state.completed ? '這題已完成，可以重做' : '已載入上次進度', state.completed ? '按「再練一次」會保留原歷程並建立新的作答。' : `盤面、筆記與 ${formatTime(state.elapsed)} 計時均已復原。`, '資料只保存在這個瀏覽器；清除網站資料或更換裝置後不會同步。');
+  const restoredItems = hasTrialChanges(state.trial) ? '盤面、筆記、試填標記' : '盤面、筆記';
+  setCoach(state.completed ? '已完成' : '繼續作答', state.completed ? '這題已完成，可以重做' : '已載入上次進度', state.completed ? '按「再練一次」會保留原歷程並建立新的作答。' : `${restoredItems}與 ${formatTime(state.elapsed)} 計時均已復原。`, '資料只保存在這個瀏覽器；清除網站資料或更換裝置後不會同步。');
   startTimer();
   renderBoard();
 }
@@ -748,7 +865,8 @@ function renderResumeCard(session) {
   if (!card || !session) return;
   const updated = session.updatedAt ? new Date(session.updatedAt).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '先前';
   card.hidden = false;
-  card.innerHTML = `<div><span>${session.completed ? 'COMPLETED SESSION' : 'LOCAL AUTOSAVE'}</span><h2>${session.completed ? '這題已完成，可以再練一次' : '已接續上次的解題進度'}</h2><p>${session.title || '數獨練習'} · ${formatTime(Number(session.elapsed || 0))} · ${updated} 儲存。盤面、筆記與時間只保存在這個瀏覽器。</p></div><div><button type="button" data-session-continue>${session.completed ? '查看盤面' : '繼續這題'}</button><button type="button" data-session-restart>${session.completed ? '再練一次' : '從頭重做'}</button></div>`;
+  const savedItems = session.trial?.marks?.some(Boolean) ? '盤面、筆記、試填標記與時間' : '盤面、筆記與時間';
+  card.innerHTML = `<div><span>${session.completed ? 'COMPLETED SESSION' : 'LOCAL AUTOSAVE'}</span><h2>${session.completed ? '這題已完成，可以再練一次' : '已接續上次的解題進度'}</h2><p>${session.title || '數獨練習'} · ${formatTime(Number(session.elapsed || 0))} · ${updated} 儲存。${savedItems}只保存在這個瀏覽器。</p></div><div><button type="button" data-session-continue>${session.completed ? '查看盤面' : '繼續這題'}</button><button type="button" data-session-restart>${session.completed ? '再練一次' : '從頭重做'}</button></div>`;
   card.querySelector('[data-session-continue]').addEventListener('click', () => {
     card.hidden = true;
     byId('sudoku-board').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -833,12 +951,21 @@ document.querySelectorAll('[data-difficulty]').forEach((button) => button.addEve
 
 byId('undo-btn').addEventListener('click', undo);
 byId('all-notes-btn').addEventListener('click', toggleAllNotes);
+byId('trial-btn').addEventListener('click', () => {
+  if (state.trial.active) keepTrialChanges();
+  else activateTrial(state.trial.focus);
+});
+document.querySelectorAll('[data-trial-color]').forEach((button) => button.addEventListener('click', () => activateTrial(Number(button.dataset.trialColor))));
+byId('trial-confirm-btn').addEventListener('click', confirmTrialChanges);
+byId('trial-keep-btn').addEventListener('click', () => keepTrialChanges());
+byId('trial-clear-btn').addEventListener('click', clearTrialChanges);
 byId('erase-btn').addEventListener('click', eraseSelected);
 byId('reset-btn').addEventListener('click', resetPuzzle);
 byId('hint-btn').addEventListener('click', requestHint);
 byId('apply-hint-btn').addEventListener('click', applyHint);
 byId('check-btn').addEventListener('click', checkAnswer);
 byId('notes-btn').addEventListener('click', () => {
+  if (trialInputIsPaused()) return;
   state.notesMode = !state.notesMode;
   byId('notes-btn').classList.toggle('active', state.notesMode);
   byId('notes-btn').querySelector('b').textContent = state.notesMode ? '開' : '關';

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#16372f">
   <meta name="description" content="從候選數到進階策略，會解釋每一步的數獨學習網站。">
   <title>數織學堂｜Sudoku Learning Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20260824-mobile1">
+  <link rel="stylesheet" href="./styles.css?v=20260825-trial1">
 </head>
 <body>
   <div class="page-shell">
@@ -50,9 +50,25 @@
               <button id="undo-btn" type="button"><span>↶</span>復原</button>
               <button id="notes-btn" type="button"><span>✎</span>筆記 <b>關</b></button>
               <button id="all-notes-btn" type="button" title="依目前盤面填入每個空格的合法候選數"><span>123</span>全筆記 <b>填</b></button>
+              <button id="trial-btn" type="button" aria-expanded="false" aria-controls="trial-panel"><span>◇</span>試填 <b>關</b></button>
               <button id="erase-btn" type="button"><span>⌫</span>清除</button>
               <button id="reset-btn" type="button"><span>↺</span>重來</button>
             </div>
+            <section id="trial-panel" class="trial-panel" hidden aria-live="polite">
+              <div class="trial-copy">
+                <strong id="trial-status">試填模式</strong>
+                <span id="trial-summary">選擇藍色 A 或紫色 B，試填數字不會立刻轉正。</span>
+              </div>
+              <div class="trial-colors" aria-label="試填顏色">
+                <button class="trial-color trial-color-a" data-trial-color="1" type="button">藍色 A</button>
+                <button class="trial-color trial-color-b" data-trial-color="2" type="button">紫色 B</button>
+              </div>
+              <div class="trial-actions">
+                <button id="trial-confirm-btn" type="button">全部轉正</button>
+                <button id="trial-keep-btn" type="button">保留退出</button>
+                <button id="trial-clear-btn" type="button">清除試填</button>
+              </div>
+            </section>
           </section>
 
           <aside class="coach-card">
@@ -135,6 +151,6 @@
     <footer><span>數織學堂 · 在本機思考，在每一步學習</span><span>無廣告 · 無登入 · 資料不離開裝置</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./src/app.js?v=20260824-mobile1"></script>
+  <script type="module" src="./src/app.js?v=20260825-trial1"></script>
 </body>
 </html>
