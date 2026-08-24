@@ -17,6 +17,7 @@ import {
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS } from '../src/learning/curriculum.js';
 import { TECHNIQUE_DRILLS } from '../src/learning/drills.js';
 import { evaluateTechniqueAnswer, getTechniqueQuestions } from '../src/learning/assessments.js';
+import { MANUAL_ASSESSMENT_TECHNIQUES } from '../src/learning/manual-assessments.js';
 import { TUTORIALS } from '../src/learning/tutorials.js';
 import { PROGRESS_KEY, SESSION_KEY, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
 
@@ -154,6 +155,22 @@ test('every targeted technique has three target-position questions with exact gr
       assert.equal(evaluateTechniqueAnswer(question, wrongIndex, question.answers[0].digit), false);
       assert.equal(question.board.length, 81);
       assert.equal(question.candidates.length, 81);
+      if (MANUAL_ASSESSMENT_TECHNIQUES.includes(technique)) {
+        assert.ok(question.board.some(Boolean), `${technique} should show puzzle givens`);
+        assert.equal(validateGrid(question.board).valid, true, `${technique} givens should be valid`);
+        assert.equal(isSolved(question.solution), true, `${technique} should retain a compatible solution`);
+        question.board.forEach((digit, index) => {
+          if (digit) assert.equal(digit, question.solution[index], `${technique} given at ${index} should match its solution`);
+        });
+        question.answers.forEach(({ index, digit }) => {
+          assert.equal(question.kind === 'placement' ? question.solution[index] === digit : question.solution[index] !== digit, true);
+        });
+        question.candidates.forEach((digits, index) => {
+          for (const digit of digits) {
+            assert.ok(candidatesFor(question.board, index).includes(digit), `${technique} candidate ${digit} at ${index} should be legal`);
+          }
+        });
+      }
     }
   }
 });

@@ -1,6 +1,6 @@
-import { cellName, logicalSolve, parsePuzzle, serializeGrid } from '../core/sudoku.js?v=20260824-learning3';
-import { DRILL_BY_TECHNIQUE } from './drills.js?v=20260824-learning3';
-import { getManualTechniqueQuestions } from './manual-assessments.js?v=20260824-learning3';
+import { cellName, logicalSolve, parsePuzzle, serializeGrid } from '../core/sudoku.js?v=20260824-learning4';
+import { DRILL_BY_TECHNIQUE } from './drills.js?v=20260824-learning4';
+import { getManualTechniqueQuestions } from './manual-assessments.js?v=20260824-learning4';
 
 const TRANSFORMS = [
   { id: 'original', label: '原始盤面', map: (row, col) => [row, col], shift: 0 },

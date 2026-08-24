@@ -1,4 +1,4 @@
-import { cellName } from '../core/sudoku.js?v=20260824-learning3';
+import { cellName } from '../core/sudoku.js?v=20260824-learning4';
 
 const indexOf = (row, col) => (row - 1) * 9 + col - 1;
 const cell = (row, col, digits) => ({ index: indexOf(row, col), digits });
@@ -124,6 +124,46 @@ const definitions = {
   }
 };
 
+const SOLUTIONS = Object.freeze({
+  skyscraper: '467891253189235674235674891746358912391427568528169347653712489812946735974583126',
+  kite: '689235417134679528257148639368592741791463852425781963816924375972356184543817296',
+  emptyRectangle: '348971625621485973957632841516324789789156234234897156873519462162743598495268317',
+  xyzWing: '157689234426315789893247156241763895965824317378951462539172648612498573784536921',
+  wWing: '873694251962815473541273896124568937689347512357129684215936748496781325738452169',
+  simpleColoring: '132456879456789213789123546264597138371268954895314627613842795927635481548971362',
+  xChain: '342789615785316429196425738537968142914257386268134957471592863623871594859643271',
+  xyChain: '245163789139782456678495123853214967716938245492576318567321894981647532324859671',
+  aic: '251378469634915278789462315312789546845136927976254183427893651163547892598621734',
+  als: '125346789673589124894127356241763895759812463368954217436291578517638942982475631',
+  sueDeCoq: '182743956453968712796512384534621897827395641961874235315286479249137568678459123',
+  finnedFish: '751369482839247561642158793596872134178493256423615978217986345984531627365724819',
+  uniqueRectangle: '134256789527489136689137245843972561251364897796518324362741958415893672978625413',
+  bugPlusOne: '124637859689415273357829146432961587871354962596278314713542698248196735965783421',
+  forcingChain: '123475689789316245456829137865243971234197856917568324372651498541982763698734512',
+  search: '234516789517489236689327145758694321146273958392158467461735892823961574975842613'
+});
+
+function arePeers(left, right) {
+  const leftRow = Math.floor(left / 9);
+  const rightRow = Math.floor(right / 9);
+  const leftCol = left % 9;
+  const rightCol = right % 9;
+  return leftRow === rightRow
+    || leftCol === rightCol
+    || (Math.floor(leftRow / 3) === Math.floor(rightRow / 3) && Math.floor(leftCol / 3) === Math.floor(rightCol / 3));
+}
+
+function createBaseBoard(solution, definition) {
+  const board = [...solution];
+  for (const focus of Object.values(definition.cells)) {
+    board[focus.index] = 0;
+    for (let index = 0; index < 81; index += 1) {
+      if (focus.digits.includes(solution[index]) && arePeers(focus.index, index)) board[index] = 0;
+    }
+  }
+  return board;
+}
+
 function shifted(digit, amount) {
   return ((digit - 1 + amount) % 9) + 1;
 }
@@ -136,9 +176,18 @@ function transformedIndex(source, transform) {
 }
 
 function createQuestion(technique, definition, transform, variant) {
+  const baseSolution = [...SOLUTIONS[technique]].map(Number);
+  const baseBoard = createBaseBoard(baseSolution, definition);
   const board = Array(81).fill(0);
+  const solution = Array(81).fill(0);
   const candidates = Array.from({ length: 81 }, () => []);
   const positions = {};
+  baseBoard.forEach((digit, index) => {
+    if (digit) board[transformedIndex(index, transform)] = shifted(digit, transform.shift);
+  });
+  baseSolution.forEach((digit, index) => {
+    solution[transformedIndex(index, transform)] = shifted(digit, transform.shift);
+  });
   Object.entries(definition.cells).forEach(([name, source]) => {
     const index = transformedIndex(source.index, transform);
     positions[name] = index;
@@ -149,8 +198,9 @@ function createQuestion(technique, definition, transform, variant) {
   const number = (digit) => shifted(digit, transform.shift);
   return Object.freeze({
     id: `${technique}-${variant + 1}-focus`, technique, variant: variant + 1,
-    variantLabel: `${transform.label} · 已省略無關候選`, kind: definition.kind,
+    variantLabel: `${transform.label} · 題目數字＋目前候選`, kind: definition.kind,
     board: Object.freeze(board), boardKey: `${technique}-${variant + 1}`,
+    solution: Object.freeze(solution),
     candidates: Object.freeze(candidates.map((values) => Object.freeze(values))),
     prompt: definition.prompt(number),
     instruction: definition.kind === 'placement' ? '先點選指定目標格，再按下應填入的數字。' : '先點選可排除候選的指定格，再按下該候選數。',
