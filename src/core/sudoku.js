@@ -74,6 +74,11 @@ export function candidatesFor(grid, index) {
   return Array.from({ length: 9 }, (_, offset) => offset + 1).filter((digit) => !used.has(digit));
 }
 
+export function candidateNotesForGrid(grid) {
+  assertGrid(grid);
+  return grid.map((value, index) => value ? [] : candidatesFor(grid, index));
+}
+
 export function isSolved(grid) {
   return grid.every(Boolean) && validateGrid(grid).valid;
 }

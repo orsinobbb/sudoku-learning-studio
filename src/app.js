@@ -2,6 +2,7 @@ import {
   DIFFICULTIES,
   PEERS,
   analyzePuzzle,
+  candidateNotesForGrid,
   candidatesFor,
   cellName,
   generatePuzzle,
@@ -11,12 +12,12 @@ import {
   parsePuzzle,
   serializeGrid,
   validateGrid
-} from './core/sudoku.js?v=20260824-coach1';
-import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-coach1';
-import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-coach1';
-import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-coach1';
-import { getTutorial } from './learning/tutorials.js?v=20260824-coach1';
-import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260824-coach1';
+} from './core/sudoku.js?v=20260824-notes1';
+import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-notes1';
+import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-notes1';
+import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-notes1';
+import { getTutorial } from './learning/tutorials.js?v=20260824-notes1';
+import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260824-notes1';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
@@ -274,6 +275,16 @@ function renderBoard() {
     button.setAttribute('aria-label', `數字 ${digit}${completed ? '，已完成' : ''}`);
     button.title = completed ? `數字 ${digit} 已全部完成` : `填入數字 ${digit}`;
   });
+  const candidateNotes = candidateNotesForGrid(state.grid);
+  const hasEmptyCell = state.grid.some((value) => !value);
+  const notesAreComplete = hasEmptyCell && candidateNotes.every((values, index) => (
+    values.length === state.notes[index].size && values.every((digit) => state.notes[index].has(digit))
+  ));
+  const allNotesButton = byId('all-notes-btn');
+  allNotesButton.classList.toggle('active', notesAreComplete);
+  allNotesButton.querySelector('b').textContent = notesAreComplete ? '清' : '填';
+  allNotesButton.setAttribute('aria-label', notesAreComplete ? '清除全部候選筆記' : '填入全部合法候選筆記');
+  allNotesButton.title = notesAreComplete ? '清除全盤候選筆記' : '依目前盤面填入每個空格的合法候選數';
   renderProgress();
 }
 
@@ -307,6 +318,39 @@ function selectCell(index) {
 function saveHistory() {
   state.history.push({ grid: [...state.grid], notes: state.notes.map((set) => [...set]) });
   if (state.history.length > 100) state.history.shift();
+}
+
+function toggleAllNotes() {
+  if (state.completed || !state.grid.some((value) => !value)) {
+    showToast('題目已完成，沒有空格需要筆記。');
+    return;
+  }
+  const validation = updateValidation();
+  if (!validation.valid) {
+    renderBoard();
+    showToast('盤面有重複數字，請先修正再建立候選筆記。', 'warning');
+    return;
+  }
+  const candidateNotes = candidateNotesForGrid(state.grid);
+  const notesAreComplete = candidateNotes.every((values, index) => (
+    values.length === state.notes[index].size && values.every((digit) => state.notes[index].has(digit))
+  ));
+  saveHistory();
+  state.notes = notesAreComplete
+    ? Array.from({ length: 81 }, () => new Set())
+    : candidateNotes.map((values) => new Set(values));
+  state.hint = null;
+  state.suggestions = [];
+  byId('apply-hint-btn').hidden = true;
+  renderBoard();
+  persistSession();
+  if (notesAreComplete) {
+    setCoach('候選筆記', '已清除全盤候選數', '你可以保留空白盤面自行計算，也能隨時再按一次重新建立。');
+    showToast('已清除全盤候選筆記。');
+  } else {
+    setCoach('候選筆記', '已填入所有合法候選數', '每個空格都已依同行、同列與同宮重新計算。', '候選數只代表目前合法，不等於答案；接著要用技巧繼續排除。');
+    showToast('已填入所有合法候選筆記。', 'success');
+  }
 }
 
 function updateValidation() {
@@ -777,6 +821,7 @@ document.querySelectorAll('[data-difficulty]').forEach((button) => button.addEve
 }));
 
 byId('undo-btn').addEventListener('click', undo);
+byId('all-notes-btn').addEventListener('click', toggleAllNotes);
 byId('erase-btn').addEventListener('click', eraseSelected);
 byId('reset-btn').addEventListener('click', resetPuzzle);
 byId('hint-btn').addEventListener('click', requestHint);

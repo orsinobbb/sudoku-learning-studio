@@ -94,7 +94,7 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .number-pad button.completed-digit::after { content: "✓"; margin-left: 3px; font-size: 10px; }
 .sudoku-cell.digit-completed { color: #146044; background: #d6eee3; }
 .sudoku-cell.digit-completed.same-number { background: #bfe2d1; }
-.board-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+.board-actions { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 12px; }
 .board-actions button { border: 0; background: transparent; border-radius: 9px; padding: 8px 3px; color: var(--ink-soft); font-size: 11px; cursor: pointer; }
 .board-actions button:hover, .board-actions button.active { background: var(--mint-light); color: var(--green); }
 .board-actions button span { display: block; margin-bottom: 2px; font-size: 17px; }

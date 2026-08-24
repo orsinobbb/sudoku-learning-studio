@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   analyzePuzzle,
+  candidateNotesForGrid,
   candidatesFor,
   countSolutions,
   generatePuzzle,
@@ -33,6 +34,14 @@ test('parses and serializes 81-cell puzzle formats', () => {
   assert.deepEqual(parsePuzzle(dotted), classic);
   assert.equal(serializeGrid(classic).length, 81);
   assert.throws(() => parsePuzzle('123'), /81 格/);
+});
+
+test('builds legal candidate notes for every empty cell', () => {
+  const notes = candidateNotesForGrid(classic);
+  assert.equal(notes.length, 81);
+  assert.deepEqual(notes[0], []);
+  assert.deepEqual(notes[2], [1, 2, 4]);
+  assert.ok(notes.every((values, index) => classic[index] ? values.length === 0 : values.length > 0));
 });
 
 test('validates conflicts and calculates candidates', () => {
