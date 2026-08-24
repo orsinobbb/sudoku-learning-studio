@@ -267,7 +267,7 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .assessment-cell.related { background: #d9eee5; }
 .assessment-cell.target { box-shadow: inset 0 0 0 3px #d97757; background: #ffe0d6; }
 .assessment-cell > span { display: grid; grid-template-columns: repeat(3, 1fr); width: 90%; height: 90%; }
-.assessment-cell i { display: grid; place-items: center; color: #75847e; font-size: clamp(6px, 1vw, 10px); font-style: normal; }
+.assessment-cell i { display: grid; place-items: center; color: #61716b; font-size: clamp(7px, 2vw, 10px); font-style: normal; font-weight: 650; }
 .assessment-pad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; margin-top: 9px; }
 .assessment-pad button { aspect-ratio: 1.2; border: 1px solid var(--line); border-radius: 7px; color: var(--green); background: white; cursor: pointer; font-weight: 800; }
 .assessment-coach { padding: 20px; border-radius: 15px; background: var(--mint-light); }
@@ -352,7 +352,7 @@ footer { display: flex; justify-content: space-between; padding: 24px 0 35px; bo
   .workbench-title, .target-assessment, .knowledge-check { padding: 19px 15px; }
   .assessment-head { display: grid; }
   .assessment-layout { grid-template-columns: minmax(0, 1fr); }
-  .assessment-cell i { font-size: 6px; }
+  .assessment-cell i { font-size: clamp(7px, 2.2vw, 9px); }
   .stage-heading { grid-template-columns: 44px 1fr; padding: 19px 15px; }
   .stage-number { width: 40px; height: 40px; }
   .stage-meta { grid-column: 2; text-align: left; }

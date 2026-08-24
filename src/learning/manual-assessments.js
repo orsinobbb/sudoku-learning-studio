@@ -1,9 +1,10 @@
-import { cellName } from '../core/sudoku.js?v=20260824-learning5';
+import { candidatesFor, cellName } from '../core/sudoku.js?v=20260824-learning6';
 
 const CLUE_TARGET = 30;
 
 const indexOf = (row, col) => (row - 1) * 9 + col - 1;
 const cell = (row, col, digits) => ({ index: indexOf(row, col), digits });
+const exactUnit = (kind, number, digit, names) => ({ kind, number, digit, names });
 
 const TRANSFORMS = [
   { label: '聚焦候選圖 A', map: (row, col) => [row, col], shift: 0 },
@@ -16,20 +17,23 @@ const definitions = {
     digit: 1, kind: 'elimination',
     cells: { a: cell(1, 6, [1, 4]), b: cell(5, 6, [1, 7]), c: cell(5, 9, [1, 8]), d: cell(3, 9, [1, 6]), target: cell(1, 7, [1, 2]) },
     related: ['a', 'b', 'c', 'd'], answers: [['target', 1]],
+    exactUnits: [exactUnit('col', 6, 1, ['a', 'b']), exactUnit('col', 9, 1, ['c', 'd'])],
     prompt: (n) => `Skyscraper 已成立；指定哪一格可排除候選 ${n(1)}？`,
     explain: (p, n) => `${p('a')}–${p('b')} 與 ${p('c')}–${p('d')} 是候選 ${n(1)} 的兩條強連結，底部 ${p('b')}、${p('c')} 互見，所以兩個頂端至少一個為真；${p('target')} 同時看見兩端，排除 ${n(1)}。`
   },
   kite: {
     digit: 5, kind: 'elimination',
-    cells: { a: cell(2, 7, [5, 8]), b: cell(9, 7, [2, 5]), c: cell(8, 4, [3, 5]), d: cell(8, 9, [4, 5]), target: cell(2, 4, [5, 6]) },
+    cells: { a: cell(2, 7, [5, 8]), b: cell(9, 7, [2, 5]), c: cell(8, 5, [5, 6]), d: cell(8, 9, [4, 5]), target: cell(2, 5, [5, 7]) },
     related: ['a', 'b', 'c', 'd'], answers: [['target', 5]],
+    exactUnits: [exactUnit('col', 7, 5, ['a', 'b']), exactUnit('row', 8, 5, ['c', 'd'])],
     prompt: (n) => `2-String Kite 已成立；指定哪一格可排除候選 ${n(5)}？`,
     explain: (p, n) => `${p('a')}–${p('b')} 是列強連結，${p('c')}–${p('d')} 是行強連結，${p('b')} 與 ${p('d')} 又在同一宮相接；因此 ${p('a')}、${p('c')} 至少一個為 ${n(5)}，${p('target')} 必須排除 ${n(5)}。`
   },
   emptyRectangle: {
     digit: 9, kind: 'elimination',
-    cells: { er1: cell(4, 5, [2, 9]), er2: cell(4, 6, [4, 9]), er3: cell(6, 6, [7, 9]), a: cell(4, 2, [1, 9]), b: cell(8, 2, [6, 9]), target: cell(8, 6, [3, 9]) },
-    related: ['er1', 'er2', 'er3', 'a', 'b'], answers: [['target', 9]],
+    cells: { er1: cell(4, 4, [3, 9]), er2: cell(4, 6, [4, 9]), er3: cell(5, 5, [5, 9]), er4: cell(6, 5, [2, 9]), a: cell(4, 2, [1, 9]), b: cell(9, 2, [5, 9]), target: cell(9, 5, [6, 9]) },
+    related: ['er1', 'er2', 'er3', 'er4', 'a', 'b'], answers: [['target', 9]],
+    exactUnits: [exactUnit('box', 5, 9, ['er1', 'er2', 'er3', 'er4']), exactUnit('col', 2, 9, ['a', 'b'])],
     prompt: (n) => `Empty Rectangle 已成立；指定哪一格可排除候選 ${n(9)}？`,
     explain: (p, n) => `中宮的 ${n(9)} 全落在交叉的行與列；${p('a')}–${p('b')} 又是列強連結。無論 ${p('a')} 是否為真，${p('target')} 都會被 ${p('b')} 或宮內列方向的 ${n(9)} 看見，因此排除 ${n(9)}。`
   },
@@ -42,22 +46,25 @@ const definitions = {
   },
   wWing: {
     digit: 5, kind: 'elimination',
-    cells: { left: cell(4, 4, [5, 9]), right: cell(8, 9, [5, 9]), linkA: cell(4, 8, [3, 9]), linkB: cell(8, 8, [2, 9]), target: cell(4, 9, [5, 7]) },
+    cells: { left: cell(4, 4, [5, 9]), right: cell(8, 9, [5, 9]), linkA: cell(4, 7, [3, 9]), linkB: cell(8, 7, [3, 9]), target: cell(4, 9, [5, 7]) },
     related: ['left', 'right', 'linkA', 'linkB'], answers: [['target', 5]],
+    exactUnits: [exactUnit('col', 7, 9, ['linkA', 'linkB'])],
     prompt: (n) => `W-Wing 已成立；指定哪一格可排除候選 ${n(5)}？`,
     explain: (p, n) => `${p('left')}、${p('right')} 是相同雙候選；${p('linkA')}–${p('linkB')} 對另一候選 ${n(9)} 形成強連結，因此兩翼至少一格為 ${n(5)}。${p('target')} 看見兩翼，排除 ${n(5)}。`
   },
   simpleColoring: {
     digit: 3, kind: 'elimination',
-    cells: { a1: cell(1, 2, [3, 6]), b1: cell(1, 8, [3, 7]), a2: cell(5, 8, [3, 5]), b2: cell(5, 1, [3, 9]), target: cell(2, 1, [3, 4]) },
+    cells: { a1: cell(1, 2, [3, 6]), b1: cell(1, 8, [3, 7]), a2: cell(4, 8, [3, 8]), b2: cell(4, 1, [2, 3]), target: cell(2, 1, [3, 4]) },
     related: ['a1', 'b1', 'a2', 'b2'], answers: [['target', 3]],
+    exactUnits: [exactUnit('row', 1, 3, ['a1', 'b1']), exactUnit('col', 8, 3, ['b1', 'a2']), exactUnit('row', 4, 3, ['a2', 'b2'])],
     prompt: (n) => `簡單著色形成 Color Trap；指定哪一格可排除 ${n(3)}？`,
     explain: (p, n) => `沿 ${p('a1')}–${p('b1')}–${p('a2')}–${p('b2')} 的強連結交替著色。${p('target')} 同時看見相反顏色的 ${p('a1')} 與 ${p('b2')}，兩色必有一真，因此排除 ${n(3)}。`
   },
   xChain: {
     digit: 7, kind: 'elimination',
-    cells: { a: cell(1, 2, [4, 7]), b: cell(1, 9, [5, 7]), c: cell(2, 8, [2, 7]), d: cell(7, 8, [6, 7]), e: cell(7, 3, [1, 7]), f: cell(4, 3, [7, 8]), target: cell(4, 2, [3, 7]) },
+    cells: { a: cell(1, 4, [2, 7]), b: cell(1, 1, [3, 7]), c: cell(2, 2, [7, 8]), d: cell(2, 1, [4, 7]), e: cell(5, 1, [7, 9]), f: cell(5, 6, [6, 7]), target: cell(3, 6, [5, 7]) },
     related: ['a', 'b', 'c', 'd', 'e', 'f'], answers: [['target', 7]],
+    exactUnits: [exactUnit('row', 1, 7, ['a', 'b']), exactUnit('row', 2, 7, ['c', 'd']), exactUnit('row', 5, 7, ['e', 'f'])],
     prompt: (n) => `X-Chain 首尾已鎖定；指定哪一格可排除 ${n(7)}？`,
     explain: (p, n) => `${p('a')} = ${p('b')} − ${p('c')} = ${p('d')} − ${p('e')} = ${p('f')} 是以 ${n(7)} 強、弱交替且首尾為強連結的鏈；兩端至少一真，${p('target')} 看見兩端，所以排除 ${n(7)}。`
   },
@@ -70,8 +77,9 @@ const definitions = {
   },
   aic: {
     digit: 5, kind: 'elimination',
-    cells: { a: cell(1, 2, [5, 8]), b: cell(1, 7, [4, 8]), c: cell(8, 7, [3, 8]), d: cell(8, 3, [3, 5]), e: cell(3, 3, [5, 9]), target: cell(2, 1, [5, 6]) },
+    cells: { a: cell(1, 2, [5, 8]), b: cell(1, 7, [4, 8]), c: cell(8, 7, [3, 8]), d: cell(8, 3, [3, 5]), e: cell(9, 1, [5, 9]), target: cell(1, 1, [2, 5]) },
     related: ['a', 'b', 'c', 'd', 'e'], answers: [['target', 5]],
+    exactUnits: [exactUnit('col', 7, 8, ['b', 'c']), exactUnit('row', 8, 3, ['c', 'd']), exactUnit('box', 7, 5, ['d', 'e'])],
     prompt: (n) => `AIC 強弱連結已交替；指定哪一格可排除端點候選 ${n(5)}？`,
     explain: (p, n) => `鏈為 ${n(5)}=${n(8)}@${p('a')} − ${n(8)}@${p('b')} = ${n(8)}@${p('c')} − ${n(3)}@${p('c')} = ${n(3)}@${p('d')} − ${n(5)}@${p('d')} = ${n(5)}@${p('e')}。首尾 ${n(5)} 至少一真，${p('target')} 看見兩端，故排除。`
   },
@@ -91,24 +99,33 @@ const definitions = {
   },
   finnedFish: {
     digit: 6, kind: 'elimination',
-    cells: { a: cell(2, 2, [3, 6]), b: cell(2, 8, [6, 9]), c: cell(7, 2, [1, 6]), d: cell(7, 8, [4, 6]), fin: cell(7, 9, [5, 6]), target: cell(8, 8, [2, 6]) },
+    cells: { a: cell(2, 6, [6, 7]), b: cell(2, 8, [6, 9]), c: cell(7, 6, [1, 6]), d: cell(7, 8, [4, 6]), fin: cell(7, 7, [3, 6]), target: cell(8, 8, [2, 6]) },
     related: ['a', 'b', 'c', 'd', 'fin'], answers: [['target', 6]],
+    exactUnits: [exactUnit('row', 2, 6, ['a', 'b']), exactUnit('row', 7, 6, ['c', 'd', 'fin'])],
     prompt: (n) => `Finned X-Wing 已成立；指定鰭所限制區域內可排除 ${n(6)} 的格子。`,
     explain: (p, n) => `若 ${p('fin')} 不成立，${p('a')},${p('b')},${p('c')},${p('d')} 形成 X-Wing；若鰭成立，又會直接看見 ${p('target')}。兩種情況都使 ${p('target')} 排除 ${n(6)}。`
   },
   uniqueRectangle: {
     digit: 1, kind: 'elimination',
-    cells: { a: cell(1, 1, [1, 2]), b: cell(1, 4, [1, 2]), c: cell(5, 1, [1, 2]), target: cell(5, 4, [1, 2, 3]) },
-    related: ['a', 'b', 'c', 'target'], answers: [['target', 1], ['target', 2]],
-    prompt: (n) => `唯一矩形 Type 1：指定多候選角，排除任一矩形候選 ${n(1)} 或 ${n(2)}。`,
-    explain: (p, n) => `四角若都只剩 ${n(1)}/${n(2)}，會形成可互換的雙解矩形。依唯一解前提，${p('target')} 的額外候選 ${n(3)} 必須成立，所以可排除 ${n(1)} 或 ${n(2)}。此推論依賴唯一解假設。`
+    cells: { a: cell(1, 1, [1, 5]), b: cell(1, 5, [1, 5]), c: cell(2, 1, [1, 5]), target: cell(2, 5, [1, 5, 8]) },
+    related: ['a', 'b', 'c', 'target'], answers: [['target', 1], ['target', 5]],
+    prompt: (n) => `唯一矩形 Type 1：指定多候選角，排除任一矩形候選 ${n(1)} 或 ${n(5)}。`,
+    explain: (p, n) => `四角若都只剩 ${n(1)}/${n(5)}，會形成可互換的雙解矩形。依唯一解前提，${p('target')} 的額外候選 ${n(8)} 必須成立，所以可排除 ${n(1)} 或 ${n(5)}。此推論依賴唯一解假設。`
   },
   bugPlusOne: {
-    digit: 5, kind: 'placement',
-    cells: { a: cell(1, 2, [2, 5]), b: cell(1, 8, [5, 8]), c: cell(5, 1, [2, 8]), target: cell(5, 5, [2, 5, 8]), d: cell(5, 9, [2, 5]), e: cell(9, 5, [5, 8]) },
-    related: ['a', 'b', 'c', 'target', 'd', 'e'], answers: [['target', 5]],
-    prompt: (n) => `已確認其餘未解格全為雙候選且符合 BUG；唯一三候選格應填入哪一數？`,
-    explain: (p, n) => `BUG 條件下每個候選在相關單位成對出現；${p('target')} 是唯一三候選格，多出的 ${n(5)} 破壞成對分布。為避免 BUG 雙解，必須在 ${p('target')} 填入 ${n(5)}。此推論依賴唯一解假設。`
+    digit: 3, kind: 'placement',
+    fixedBoard: '289746513436591278175328496857060002040287005020050807598674321364812759712935684',
+    stateLabel: '末盤 BUG+1 · 13 個未解格',
+    stateIntro: '這是只剩 13 格的末盤候選狀態；每個未解格都顯示目前完整候選。',
+    cells: {
+      a: cell(4, 4, [1, 4]), b: cell(4, 6, [3, 9]), c: cell(4, 7, [1, 9]), d: cell(4, 8, [3, 4]),
+      e: cell(5, 1, [6, 9]), f: cell(5, 3, [1, 3]), g: cell(5, 7, [1, 9]), h: cell(5, 8, [3, 6]),
+      i: cell(6, 1, [6, 9]), j: cell(6, 3, [1, 3]), k: cell(6, 4, [1, 4]), l: cell(6, 6, [3, 9]),
+      target: cell(6, 8, [3, 4, 6])
+    },
+    related: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'], answers: [['target', 3]],
+    prompt: () => 'BUG+1：其餘 12 格皆為雙候選；唯一三候選格應填入哪個數？',
+    explain: (p, n) => `${p('target')} 是唯一三候選格；候選 ${n(3)} 在它所屬的行、列、宮都各出現三次，而 ${n(4)}、${n(6)} 仍各成對。為避免 BUG 雙解，必須在 ${p('target')} 填入多出的 ${n(3)}。此推論依賴唯一解假設。`
   },
   forcingChain: {
     digit: 7, kind: 'elimination',
@@ -118,11 +135,12 @@ const definitions = {
     explain: (p, n) => `若 ${p('pivot')}=${n(1)}，則 ${p('a')}=${n(7)}；若 ${p('pivot')}=${n(2)}，則 ${p('b')}=${n(7)}。兩個完整分支都讓 ${p('target')} 看見一個 ${n(7)}，所以它可排除 ${n(7)}。`
   },
   search: {
-    digit: 2, kind: 'placement',
-    cells: { pivot: cell(1, 1, [1, 2]), a: cell(1, 5, [1, 7]), b: cell(5, 1, [1, 7]), dead: cell(5, 5, [7]) },
-    related: ['pivot', 'a', 'b', 'dead'], answers: [['pivot', 2]],
-    prompt: () => '回溯驗證：假設樞紐取第一個候選後導致指定格無候選，原樞紐應填哪一數？',
-    explain: (p, n) => `假設 ${p('pivot')}=${n(1)}，會迫使 ${p('a')}=${n(7)} 且 ${p('b')}=${n(7)}，使 ${p('dead')} 的唯一候選 ${n(7)} 同時被排除而矛盾。因此撤銷假設，在 ${p('pivot')} 填入 ${n(2)}。這是搜尋驗證，不列入邏輯技巧統計。`
+    digit: 6, kind: 'placement',
+    fixedBoard: '530070000600195000098000060800060003400803001700020006060000280000419005000080079',
+    cells: { pivot: cell(1, 4, [2, 6]) },
+    related: ['pivot'], answers: [['pivot', 6]],
+    prompt: (n) => `回溯驗證：完整探索 ${n(2)} 分支後出現矛盾，樞紐應填哪個數？`,
+    explain: (p, n) => `${p('pivot')} 原有 ${n(2)}/${n(6)}。把 ${p('pivot')} 暫定為 ${n(2)} 後，完整推演該分支會無解；撤銷假設後只能填入 ${n(6)}。這是可由解題器驗證的搜尋分支，不列入邏輯技巧統計。`
   }
 };
 
@@ -140,9 +158,9 @@ const SOLUTIONS = Object.freeze({
   sueDeCoq: '182743956453968712796512384534621897827395641961874235315286479249137568678459123',
   finnedFish: '751369482839247561642158793596872134178493256423615978217986345984531627365724819',
   uniqueRectangle: '134256789527489136689137245843972561251364897796518324362741958415893672978625413',
-  bugPlusOne: '124637859689415273357829146432961587871354962596278314713542698248196735965783421',
+  bugPlusOne: '289746513436591278175328496857163942943287165621459837598674321364812759712935684',
   forcingChain: '123475689789316245456829137865243971234197856917568324372651498541982763698734512',
-  search: '234516789517489236689327145758694321146273958392158467461735892823961574975842613'
+  search: '534678912672195348198342567859761423426853791713924856961537284287419635345286179'
 });
 
 function arePeers(left, right) {
@@ -216,12 +234,54 @@ function transformedIndex(source, transform) {
   return indexOf(nextRow, nextCol);
 }
 
+function sourceUnitIndexes(kind, number) {
+  const offset = number - 1;
+  if (kind === 'row') return Array.from({ length: 9 }, (_, col) => offset * 9 + col);
+  if (kind === 'col') return Array.from({ length: 9 }, (_, row) => row * 9 + offset);
+  const startRow = Math.floor(offset / 3) * 3;
+  const startCol = (offset % 3) * 3;
+  return Array.from({ length: 9 }, (_, position) => (startRow + Math.floor(position / 3)) * 9 + startCol + position % 3);
+}
+
+function buildCandidateState(board, solution, definition, positions, transform) {
+  const candidates = board.map((value, index) => value ? [] : candidatesFor(board, index));
+  const exactCells = [];
+  Object.entries(definition.cells).forEach(([name, source]) => {
+    const index = positions[name];
+    const digits = source.digits.map((digit) => shifted(digit, transform.shift)).sort((a, b) => a - b);
+    candidates[index] = digits;
+    exactCells.push({ index, digits });
+  });
+
+  const exactUnits = (definition.exactUnits || []).map((rule) => {
+    const indices = sourceUnitIndexes(rule.kind, rule.number).map((index) => transformedIndex(index, transform));
+    const allowed = rule.names.map((name) => positions[name]).sort((a, b) => a - b);
+    const digit = shifted(rule.digit, transform.shift);
+    for (const index of indices) {
+      if (!allowed.includes(index)) candidates[index] = candidates[index].filter((candidate) => candidate !== digit);
+    }
+    return { indices, allowed, digit };
+  });
+
+  const errors = [];
+  candidates.forEach((digits, index) => {
+    if (board[index]) return;
+    const raw = candidatesFor(board, index);
+    if (!digits.length) errors.push(`${cellName(index)} 沒有候選`);
+    if (!digits.includes(solution[index])) errors.push(`${cellName(index)} 遺失正解 ${solution[index]}`);
+    for (const digit of digits) if (!raw.includes(digit)) errors.push(`${cellName(index)} 的 ${digit} 不符合盤面`);
+  });
+  if (errors.length) throw new Error(`${definition.prompt((digit) => digit)}：${errors.join('；')}`);
+  return { candidates, exactCells, exactUnits };
+}
+
 function createQuestion(technique, definition, transform, variant) {
   const baseSolution = [...SOLUTIONS[technique]].map(Number);
-  const baseBoard = createBaseBoard(baseSolution, definition, technique);
+  const baseBoard = definition.fixedBoard
+    ? [...definition.fixedBoard].map(Number)
+    : createBaseBoard(baseSolution, definition, technique);
   const board = Array(81).fill(0);
   const solution = Array(81).fill(0);
-  const candidates = Array.from({ length: 81 }, () => []);
   const positions = {};
   baseBoard.forEach((digit, index) => {
     if (digit) board[transformedIndex(index, transform)] = shifted(digit, transform.shift);
@@ -232,21 +292,28 @@ function createQuestion(technique, definition, transform, variant) {
   Object.entries(definition.cells).forEach(([name, source]) => {
     const index = transformedIndex(source.index, transform);
     positions[name] = index;
-    candidates[index] = source.digits.map((digit) => shifted(digit, transform.shift));
   });
+  const state = buildCandidateState(board, solution, definition, positions, transform);
+  const candidates = state.candidates;
   const answers = definition.answers.map(([name, digit]) => ({ index: positions[name], digit: shifted(digit, transform.shift) }));
   const place = (name) => cellName(positions[name]);
   const number = (digit) => shifted(digit, transform.shift);
   return Object.freeze({
     id: `${technique}-${variant + 1}-focus`, technique, variant: variant + 1,
-    variantLabel: `${transform.label} · 中盤技巧局面 · ${CLUE_TARGET} 個盤面數字`, kind: definition.kind,
+    variantLabel: `${transform.label} · ${definition.stateLabel || `可驗證候選狀態 · ${board.filter(Boolean).length} 個盤面數字`}`, kind: definition.kind,
     board: Object.freeze(board), boardKey: `${technique}-${variant + 1}`,
     solution: Object.freeze(solution),
     candidates: Object.freeze(candidates.map((values) => Object.freeze(values))),
     prompt: definition.prompt(number),
-    instruction: `這是中盤技巧局面，只顯示本題相關候選。${definition.kind === 'placement' ? '先點選指定目標格，再按下應填入的數字。' : '先點選可排除候選的指定格，再按下該候選數。'}`,
+    instruction: `${definition.stateIntro || '這是先前步驟完成後的中盤快照；每個未解格都顯示目前完整候選。'}${definition.kind === 'placement' ? '先點選指定目標格，再按下應填入的數字。' : '先點選可排除候選的指定格，再按下該候選數。'}`,
     answers: Object.freeze(answers.map(Object.freeze)),
     related: Object.freeze(definition.related.map((name) => positions[name])),
+    proof: Object.freeze({
+      candidateMode: 'complete-state',
+      positions: Object.freeze({ ...positions }),
+      exactCells: Object.freeze(state.exactCells.map((item) => Object.freeze({ index: item.index, digits: Object.freeze(item.digits) }))),
+      exactUnits: Object.freeze(state.exactUnits.map((item) => Object.freeze({ indices: Object.freeze(item.indices), allowed: Object.freeze(item.allowed), digit: item.digit })))
+    }),
     explanation: definition.explain(place, number),
     answerSummary: answers.length === 1
       ? `${cellName(answers[0].index)} · ${definition.kind === 'placement' ? '填入' : '排除'} ${answers[0].digit}`
@@ -255,6 +322,163 @@ function createQuestion(technique, definition, transform, variant) {
 }
 
 export const MANUAL_ASSESSMENT_TECHNIQUES = Object.freeze(Object.keys(definitions));
+
+function validateTechniqueGeometry(question, errors) {
+  const p = question.proof.positions;
+  const sees = (left, right) => arePeers(left, right);
+  const require = (condition, message) => { if (!condition) errors.push(message); };
+  const candidates = (name) => question.candidates[p[name]];
+  const sameDigits = (left, right) => candidates(left).join(',') === candidates(right).join(',');
+  const row = (name) => Math.floor(p[name] / 9);
+  const col = (name) => p[name] % 9;
+  const box = (name) => Math.floor(row(name) / 3) * 3 + Math.floor(col(name) / 3);
+
+  if (question.technique === 'skyscraper') {
+    require(sees(p.b, p.c) && sees(p.target, p.a) && sees(p.target, p.d), 'Skyscraper 端點可見關係不成立');
+  } else if (question.technique === 'kite') {
+    require(sees(p.b, p.d) && sees(p.target, p.a) && sees(p.target, p.c), '2-String Kite 近端或遠端可見關係不成立');
+  } else if (question.technique === 'emptyRectangle') {
+    const rectangle = question.proof.exactUnits.find(({ allowed }) => allowed.length === 4);
+    const rows = new Map();
+    const cols = new Map();
+    for (const index of rectangle.allowed) {
+      rows.set(Math.floor(index / 9), (rows.get(Math.floor(index / 9)) || 0) + 1);
+      cols.set(index % 9, (cols.get(index % 9) || 0) + 1);
+    }
+    const armRow = [...rows].find(([, count]) => count === 2)?.[0];
+    const armCol = [...cols].find(([, count]) => count === 2)?.[0];
+    const intersection = armRow * 9 + armCol;
+    require(rectangle.allowed.every((index) => Math.floor(index / 9) === armRow || index % 9 === armCol), 'Empty Rectangle 宮內候選未形成兩臂');
+    require(!rectangle.allowed.includes(intersection) && !question.candidates[intersection].includes(rectangle.digit), 'Empty Rectangle 交點不可含目標候選');
+    const aUsesRowArm = row('a') === armRow;
+    const aUsesColArm = col('a') === armCol;
+    const targetUsesRowArm = row('target') === armRow;
+    const targetUsesColArm = col('target') === armCol;
+    require(
+      sees(p.target, p.b)
+        && ((aUsesRowArm && targetUsesColArm) || (aUsesColArm && targetUsesRowArm)),
+      'Empty Rectangle 外部強連結未接上兩臂'
+    );
+  } else if (question.technique === 'xyzWing') {
+    require(sees(p.pivot, p.xz) && sees(p.pivot, p.yz) && [p.pivot, p.xz, p.yz].every((index) => sees(p.target, index)), 'XYZ-Wing 樞紐、兩翼或目標可見關係不成立');
+  } else if (question.technique === 'wWing') {
+    require(sameDigits('left', 'right') && sees(p.left, p.linkA) && sees(p.right, p.linkB) && sees(p.target, p.left) && sees(p.target, p.right), 'W-Wing 雙候選翼或強連結幾何不成立');
+  } else if (question.technique === 'simpleColoring') {
+    require(sees(p.a1, p.b1) && sees(p.b1, p.a2) && sees(p.a2, p.b2) && sees(p.target, p.a1) && sees(p.target, p.b2), '簡單著色鏈或 Color Trap 不成立');
+  } else if (question.technique === 'xChain') {
+    require(sees(p.a, p.b) && sees(p.b, p.c) && sees(p.c, p.d) && sees(p.d, p.e) && sees(p.e, p.f) && sees(p.target, p.a) && sees(p.target, p.f), 'X-Chain 連結或端點可見關係不成立');
+  } else if (question.technique === 'xyChain') {
+    const chain = ['a', 'b', 'c', 'd'];
+    require(chain.every((name) => candidates(name).length === 2), 'XY-Chain 鏈格必須皆為雙候選');
+    require(chain.slice(1).every((name, index) => sees(p[chain[index]], p[name]) && candidates(chain[index]).some((digit) => candidates(name).includes(digit))), 'XY-Chain 相鄰格未正確承接候選');
+    require(sees(p.target, p.a) && sees(p.target, p.d), 'XY-Chain 目標未同時看見兩端');
+  } else if (question.technique === 'aic') {
+    require(sees(p.a, p.b) && sees(p.b, p.c) && sees(p.c, p.d) && sees(p.d, p.e) && sees(p.target, p.a) && sees(p.target, p.e), 'AIC 鏈結或端點可見關係不成立');
+  } else if (question.technique === 'als') {
+    require(sees(p.a1, p.a2) && sees(p.b1, p.b2) && sees(p.a1, p.b1), 'ALS 集合或受限共同候選關係不成立');
+    require([p.a2, p.b1, p.b2].every((index) => sees(p.target, index)), 'ALS-XZ 目標未看見所有 Z 落點');
+  } else if (question.technique === 'sueDeCoq') {
+    const intersectionUsesRow = row('i1') === row('i2');
+    const intersectionUsesCol = col('i1') === col('i2');
+    const onIntersectionLine = (name) => intersectionUsesRow ? row(name) === row('i1') : col(name) === col('i1');
+    require((intersectionUsesRow || intersectionUsesCol) && box('i1') === box('i2'), 'Sue de Coq 交界格不在同一行列與宮的交界');
+    require(onIntersectionLine('row') && box('row') !== box('i1') && box('box') === box('i1') && !onIntersectionLine('box'), 'Sue de Coq 行列側或宮側集合位置不成立');
+    require(onIntersectionLine('target') && box('target') !== box('i1'), 'Sue de Coq 排除格位置不成立');
+  } else if (question.technique === 'finnedFish') {
+    const baseUsesRows = row('a') === row('b');
+    const baseUsesCols = col('a') === col('b');
+    const sameBase = (left, right) => baseUsesRows ? row(left) === row(right) : col(left) === col(right);
+    const sameCover = (left, right) => baseUsesRows ? col(left) === col(right) : row(left) === row(right);
+    require((baseUsesRows || baseUsesCols) && sameBase('c', 'd') && sameBase('d', 'fin'), 'Finned X-Wing 基底行列不成立');
+    require(sameCover('a', 'c') && sameCover('b', 'd') && sees(p.fin, p.target) && sameCover('target', 'b'), 'Finned X-Wing 覆蓋行列、鰭或排除格不成立');
+  } else if (question.technique === 'uniqueRectangle') {
+    const corners = ['a', 'b', 'c', 'target'];
+    require(new Set(corners.map(row)).size === 2 && new Set(corners.map(col)).size === 2 && new Set(corners.map(box)).size === 2, '唯一矩形必須跨兩行、兩列及兩宮');
+    require(sameDigits('a', 'b') && sameDigits('a', 'c') && candidates('target').length === 3, '唯一矩形 Type 1 候選配置不成立');
+  } else if (question.technique === 'bugPlusOne') {
+    const blanks = question.board.map((value, index) => value ? -1 : index).filter((index) => index >= 0);
+    require(blanks.filter((index) => question.candidates[index].length === 2).length === blanks.length - 1, 'BUG+1 其他未解格必須全為雙候選');
+    require(question.candidates[p.target].length === 3, 'BUG+1 必須只有一個三候選格');
+  } else if (question.technique === 'forcingChain') {
+    require(sees(p.pivot, p.a) && sees(p.pivot, p.b) && sees(p.target, p.a) && sees(p.target, p.b), '強制鏈分支或共同結論可見關係不成立');
+  }
+}
+
+export function validateManualTechniqueQuestion(question) {
+  const errors = [];
+  question.board.forEach((value, index) => {
+    const digits = question.candidates[index];
+    if (value && digits.length) errors.push(`${cellName(index)} 已填數字卻仍有候選`);
+    if (!value && !digits.length) errors.push(`${cellName(index)} 沒有顯示候選`);
+    if (!value && !digits.includes(question.solution[index])) errors.push(`${cellName(index)} 候選不含正解`);
+    for (const digit of digits) {
+      if (!candidatesFor(question.board, index).includes(digit)) errors.push(`${cellName(index)} 的候選 ${digit} 與盤面衝突`);
+    }
+  });
+  for (const check of question.proof.exactCells) {
+    if (question.candidates[check.index].join(',') !== check.digits.join(',')) errors.push(`${cellName(check.index)} 候選集合不符`);
+  }
+  for (const check of question.proof.exactUnits) {
+    const actual = check.indices.filter((index) => question.candidates[index].includes(check.digit)).sort((a, b) => a - b);
+    if (actual.join(',') !== check.allowed.join(',')) errors.push(`候選 ${check.digit} 的強連結或限制單位不成立`);
+  }
+  for (const answer of question.answers) {
+    const matchesSolution = question.solution[answer.index] === answer.digit;
+    if ((question.kind === 'placement') !== matchesSolution) errors.push(`${cellName(answer.index)} 的答案與完成盤不一致`);
+  }
+  validateTechniqueGeometry(question, errors);
+  return Object.freeze({ valid: errors.length === 0, errors: Object.freeze(errors) });
+}
+
+export function countCandidateStateSolutions(question, assumption = null, limit = 2) {
+  const grid = [...question.board];
+  if (assumption) {
+    const { index, digit } = assumption;
+    if (grid[index] || !question.candidates[index].includes(digit)) return 0;
+    grid[index] = digit;
+  }
+  let count = 0;
+  const allowed = (index, digit) => {
+    const row = Math.floor(index / 9);
+    const col = index % 9;
+    for (let offset = 0; offset < 9; offset += 1) {
+      if (grid[row * 9 + offset] === digit || grid[offset * 9 + col] === digit) return false;
+    }
+    const startRow = Math.floor(row / 3) * 3;
+    const startCol = Math.floor(col / 3) * 3;
+    for (let r = startRow; r < startRow + 3; r += 1) {
+      for (let c = startCol; c < startCol + 3; c += 1) if (grid[r * 9 + c] === digit) return false;
+    }
+    return true;
+  };
+  const visit = () => {
+    if (count >= limit) return;
+    let next = -1;
+    let options = null;
+    for (let index = 0; index < 81; index += 1) {
+      if (grid[index]) continue;
+      const available = question.candidates[index].filter((digit) => allowed(index, digit));
+      if (!available.length) return;
+      if (!options || available.length < options.length) {
+        next = index;
+        options = available;
+        if (options.length === 1) break;
+      }
+    }
+    if (next < 0) {
+      count += 1;
+      return;
+    }
+    for (const digit of options) {
+      grid[next] = digit;
+      visit();
+      grid[next] = 0;
+      if (count >= limit) return;
+    }
+  };
+  visit();
+  return count;
+}
 
 export function getManualTechniqueQuestions(technique, count = 3) {
   const definition = definitions[technique];

@@ -17,7 +17,11 @@ import {
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS } from '../src/learning/curriculum.js';
 import { TECHNIQUE_DRILLS } from '../src/learning/drills.js';
 import { evaluateTechniqueAnswer, getTechniqueQuestions } from '../src/learning/assessments.js';
-import { MANUAL_ASSESSMENT_TECHNIQUES } from '../src/learning/manual-assessments.js';
+import {
+  MANUAL_ASSESSMENT_TECHNIQUES,
+  countCandidateStateSolutions,
+  validateManualTechniqueQuestion
+} from '../src/learning/manual-assessments.js';
 import { TUTORIALS } from '../src/learning/tutorials.js';
 import { PROGRESS_KEY, SESSION_KEY, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
 
@@ -156,20 +160,10 @@ test('every targeted technique has three target-position questions with exact gr
       assert.equal(question.board.length, 81);
       assert.equal(question.candidates.length, 81);
       if (MANUAL_ASSESSMENT_TECHNIQUES.includes(technique)) {
-        assert.equal(question.board.filter(Boolean).length, 30, `${technique} should show 30 mid-game givens`);
-        const unitCounts = Array.from({ length: 27 }, () => 0);
-        question.board.forEach((digit, index) => {
-          if (!digit) return;
-          const row = Math.floor(index / 9);
-          const col = index % 9;
-          const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
-          unitCounts[row] += 1;
-          unitCounts[9 + col] += 1;
-          unitCounts[18 + box] += 1;
-        });
-        assert.ok(unitCounts.every((count) => count >= 2 && count <= 5), `${technique} givens should be balanced across every row, column, and box`);
-        assert.match(question.variantLabel, /中盤技巧局面 · 30 個盤面數字/);
-        assert.match(question.instruction, /只顯示本題相關候選/);
+        const validation = validateManualTechniqueQuestion(question);
+        assert.equal(validation.valid, true, `${technique}: ${validation.errors.join('；')}`);
+        assert.match(question.variantLabel, /可驗證候選狀態|末盤 BUG\+1/);
+        assert.match(question.instruction, /每個未解格都顯示目前完整候選/);
         assert.equal(validateGrid(question.board).valid, true, `${technique} givens should be valid`);
         assert.equal(isSolved(question.solution), true, `${technique} should retain a compatible solution`);
         question.board.forEach((digit, index) => {
@@ -179,12 +173,78 @@ test('every targeted technique has three target-position questions with exact gr
           assert.equal(question.kind === 'placement' ? question.solution[index] === digit : question.solution[index] !== digit, true);
         });
         question.candidates.forEach((digits, index) => {
+          if (!question.board[index]) assert.ok(digits.length, `${technique} blank ${index} should show its complete candidate state`);
           for (const digit of digits) {
             assert.ok(candidatesFor(question.board, index).includes(digit), `${technique} candidate ${digit} at ${index} should be legal`);
           }
         });
       }
     }
+  }
+});
+
+test('Empty Rectangle questions contain a real empty intersection and verified external strong link', () => {
+  for (const question of getTechniqueQuestions('emptyRectangle', 3)) {
+    const digit = question.answers[0].digit;
+    const rectangle = question.proof.exactUnits.find(({ allowed }) => allowed.length === 4);
+    const strongLink = question.proof.exactUnits.find(({ allowed }) => allowed.length === 2);
+    const rowCounts = new Map();
+    const colCounts = new Map();
+    for (const index of rectangle.allowed) {
+      rowCounts.set(Math.floor(index / 9), (rowCounts.get(Math.floor(index / 9)) || 0) + 1);
+      colCounts.set(index % 9, (colCounts.get(index % 9) || 0) + 1);
+    }
+    const armRow = [...rowCounts].find(([, count]) => count === 2)[0];
+    const armCol = [...colCounts].find(([, count]) => count === 2)[0];
+    const intersection = armRow * 9 + armCol;
+    assert.ok(rectangle.allowed.every((index) => Math.floor(index / 9) === armRow || index % 9 === armCol));
+    assert.equal(rectangle.allowed.includes(intersection), false);
+    assert.equal(question.candidates[intersection].includes(digit), false, 'ERI intersection must not contain the digit');
+    assert.equal(strongLink.allowed.filter((index) => question.candidates[index].includes(digit)).length, 2);
+    const target = question.answers[0].index;
+    assert.ok(strongLink.allowed.some((index) => Math.floor(index / 9) === Math.floor(target / 9) || index % 9 === target % 9));
+  }
+});
+
+test('BUG+1 questions are genuine all-bivalue states with one three-candidate cell', () => {
+  for (const question of getTechniqueQuestions('bugPlusOne', 3)) {
+    const blanks = question.board.map((value, index) => value ? -1 : index).filter((index) => index >= 0);
+    const target = question.answers[0].index;
+    const answer = question.answers[0].digit;
+    assert.equal(blanks.length, 13);
+    assert.equal(blanks.filter((index) => question.candidates[index].length === 2).length, 12);
+    assert.deepEqual(blanks.filter((index) => question.candidates[index].length === 3), [target]);
+    const row = Math.floor(target / 9);
+    const col = target % 9;
+    const boxRow = Math.floor(row / 3) * 3;
+    const boxCol = Math.floor(col / 3) * 3;
+    const units = [
+      Array.from({ length: 9 }, (_, offset) => row * 9 + offset),
+      Array.from({ length: 9 }, (_, offset) => offset * 9 + col),
+      Array.from({ length: 9 }, (_, offset) => (boxRow + Math.floor(offset / 3)) * 9 + boxCol + offset % 3)
+    ];
+    for (const unit of units) {
+      for (const digit of question.candidates[target]) {
+        const occurrences = unit.filter((index) => question.candidates[index].includes(digit)).length;
+        assert.equal(occurrences, digit === answer ? 3 : 2);
+      }
+    }
+    assert.equal(countCandidateStateSolutions(question, null, 2), 1);
+    for (const wrong of question.candidates[target].filter((digit) => digit !== answer)) {
+      assert.equal(countCandidateStateSolutions(question, { index: target, digit: wrong }, 1), 0);
+    }
+  }
+});
+
+test('search questions verify the rejected branch instead of showing a pre-existing contradiction', () => {
+  for (const question of getTechniqueQuestions('search', 3)) {
+    const target = question.answers[0].index;
+    const answer = question.answers[0].digit;
+    const wrong = question.candidates[target].find((digit) => digit !== answer);
+    assert.equal(question.candidates[target].length, 2);
+    assert.equal(countCandidateStateSolutions(question, null, 2), 1);
+    assert.equal(countCandidateStateSolutions(question, { index: target, digit: wrong }, 1), 0);
+    assert.equal(countCandidateStateSolutions(question, { index: target, digit: answer }, 1), 1);
   }
 });
 
