@@ -12,6 +12,7 @@ import {
   parsePuzzle,
   serializeGrid,
   solveGrid,
+  suggestNextMoves,
   validateGrid
 } from '../src/core/sudoku.js';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS } from '../src/learning/curriculum.js';
@@ -82,6 +83,33 @@ test('analyzer returns a rating and explainable placement steps', () => {
   const hint = nextHint(classic);
   assert.equal(hint.kind, 'placement');
   assert.equal(classic[hint.index], 0);
+});
+
+test('next-move coach returns up to three distinct actions valid on the current board', () => {
+  const result = suggestNextMoves(classic, { limit: 3 });
+  assert.equal(result.status, 'ok');
+  assert.equal(result.suggestions.length, 3);
+  assert.equal(new Set(result.suggestions.map(({ actionKey }) => actionKey)).size, 3);
+  for (const step of result.suggestions) {
+    assert.ok(step.explanation.length >= 20);
+    if (step.kind === 'placement') {
+      assert.equal(classic[step.index], 0);
+      assert.ok(candidatesFor(classic, step.index).includes(step.digit));
+    } else {
+      assert.ok(step.eliminations.every(({ index, digit }) => candidatesFor(classic, index).includes(digit)));
+    }
+  }
+});
+
+test('next-move coach orders easier techniques first and never substitutes search', () => {
+  const expert = generatePuzzle({ difficulty: 'expert', seed: 'CHECK' }).puzzle;
+  const result = suggestNextMoves(expert, { limit: 3 });
+  const ranks = { fullHouse: 1, nakedSingle: 1, hiddenSingle: 2, lockedPointing: 3, lockedClaiming: 3, nakedPair: 4, hiddenPair: 4, nakedTriple: 5, hiddenTriple: 5, nakedQuad: 5, hiddenQuad: 5, xWing: 6, xyWing: 7, swordfish: 7, jellyfish: 8 };
+  assert.deepEqual(result.suggestions.map(({ strategy }) => strategy), ['hiddenSingle', 'hiddenSingle', 'lockedClaiming']);
+  assert.ok(result.suggestions.every(({ strategy }) => strategy !== 'search'));
+  assert.deepEqual(result.suggestions.map(({ strategy }) => ranks[strategy]), [...result.suggestions].map(({ strategy }) => ranks[strategy]).sort((a, b) => a - b));
+  assert.equal(suggestNextMoves(Array(81).fill(0)).status, 'none');
+  assert.equal(suggestNextMoves(solveGrid(classic)).status, 'solved');
 });
 
 test('analyzer distinguishes invalid and non-unique puzzles', () => {

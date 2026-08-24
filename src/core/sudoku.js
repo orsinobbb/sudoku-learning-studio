@@ -285,13 +285,14 @@ const SUBSET_NAMES = {
 
 const FISH_NAMES = { 2: 'xWing', 3: 'swordfish', 4: 'jellyfish' };
 
-export function logicalSolve(source, { includeSnapshots = false } = {}) {
+export function logicalSolve(source, { includeSnapshots = false, stopAfterFirst = false, excludedActions = [], allowSearch = true } = {}) {
   assertGrid(source);
   const initialValidation = validateGrid(source);
   if (!initialValidation.valid) return { solved: false, invalid: true, grid: [...source], steps: [], hardest: 'invalid' };
   const grid = [...source];
   const candidateMap = createCandidateMap(grid);
   const steps = [];
+  const excluded = new Set(excludedActions);
   let hardest = 'fullHouse';
   const ranks = {
     fullHouse: 1, nakedSingle: 1, hiddenSingle: 2,
@@ -306,6 +307,14 @@ export function logicalSolve(source, { includeSnapshots = false } = {}) {
     if (ranks[step.strategy] > ranks[hardest]) hardest = step.strategy;
   }
 
+  function placementKey(index, digit) {
+    return `placement:${index}:${digit}`;
+  }
+
+  function eliminationKey(eliminations) {
+    return `elimination:${eliminations.map(({ index, digit }) => `${index}:${digit}`).sort().join('|')}`;
+  }
+
   function snapshotState() {
     if (!includeSnapshots) return null;
     return {
@@ -315,22 +324,26 @@ export function logicalSolve(source, { includeSnapshots = false } = {}) {
   }
 
   function place(index, digit, strategy, explanation, related = []) {
+    const actionKey = placementKey(index, digit);
+    if (excluded.has(actionKey)) return false;
     const snapshot = snapshotState();
     grid[index] = digit;
     candidateMap.delete(index);
     for (const peer of PEERS[index]) candidateMap.get(peer)?.delete(digit);
-    record({ kind: 'placement', strategy, index, digit, related, explanation, ...(snapshot ? { snapshot } : {}) });
+    record({ kind: 'placement', strategy, index, digit, related, explanation, actionKey, ...(snapshot ? { snapshot } : {}) });
+    return true;
   }
 
   function eliminate(indices, digit, strategy, explanation, related = []) {
     const snapshot = snapshotState();
-    const changed = [];
-    for (const index of indices) {
-      if (candidateMap.get(index)?.delete(digit)) changed.push(index);
-    }
+    const changed = indices.filter((index) => candidateMap.get(index)?.has(digit));
+    const eliminations = changed.map((index) => ({ index, digit }));
+    const actionKey = eliminationKey(eliminations);
+    if (!changed.length || excluded.has(actionKey)) return false;
+    for (const index of changed) candidateMap.get(index).delete(digit);
     if (changed.length) record({
       kind: 'elimination', strategy, indices: changed, digit, related, explanation,
-      eliminations: changed.map((index) => ({ index, digit })),
+      eliminations, actionKey,
       ...(snapshot ? { snapshot } : {})
     });
     return changed.length > 0;
@@ -338,21 +351,24 @@ export function logicalSolve(source, { includeSnapshots = false } = {}) {
 
   function eliminateMany(indices, digits, strategy, explanation, related = []) {
     const snapshot = snapshotState();
+    const eliminations = indices.flatMap((index) => digits
+      .filter((digit) => candidateMap.get(index)?.has(digit))
+      .map((digit) => ({ index, digit })));
+    const actionKey = eliminationKey(eliminations);
+    if (!eliminations.length || excluded.has(actionKey)) return false;
     const changed = [];
-    const eliminations = [];
     for (const index of indices) {
       const values = candidateMap.get(index);
       if (!values) continue;
       for (const digit of digits) {
         if (values.delete(digit)) {
           changed.push(index);
-          eliminations.push({ index, digit });
         }
       }
     }
     if (changed.length) record({
       kind: 'elimination', strategy, indices: [...new Set(changed)], digits, related, explanation,
-      eliminations,
+      eliminations, actionKey,
       ...(snapshot ? { snapshot } : {})
     });
     return changed.length > 0;
@@ -387,13 +403,16 @@ export function logicalSolve(source, { includeSnapshots = false } = {}) {
           for (const digit of candidateMap.get(cell)) if (!digits.includes(digit)) removals.push({ cell, digit });
         }
         if (!removals.length) continue;
+        const eliminations = removals.map(({ cell, digit }) => ({ index: cell, digit }));
+        const actionKey = eliminationKey(eliminations);
+        if (excluded.has(actionKey)) continue;
         const snapshot = snapshotState();
         for (const { cell, digit } of removals) candidateMap.get(cell).delete(digit);
         const name = SUBSET_NAMES[size];
         record({
           kind: 'elimination', strategy: name.hidden, indices: [...new Set(removals.map(({ cell }) => cell))], digits,
           related: anchors,
-          eliminations: removals.map(({ cell, digit }) => ({ index: cell, digit })),
+          eliminations, actionKey,
           explanation: `${unitName(unitIndex)}中，${digits.join('、')} 只出現在這 ${size} 格，形成隱性${name.label}；這些格可移除其他候選數。`,
           ...(snapshot ? { snapshot } : {})
         });
@@ -450,6 +469,7 @@ export function logicalSolve(source, { includeSnapshots = false } = {}) {
   }
 
   for (let guard = 0; guard < 500 && candidateMap.size; guard += 1) {
+    if (stopAfterFirst && steps.length) break;
     const impossible = [...candidateMap.entries()].find(([, values]) => values.size === 0);
     if (impossible) return { solved: false, invalid: true, grid, steps, hardest };
 
@@ -459,13 +479,14 @@ export function logicalSolve(source, { includeSnapshots = false } = {}) {
       if (empties.length !== 1) continue;
       const index = empties[0];
       const digit = [...candidateMap.get(index)][0];
-      place(index, digit, 'fullHouse', `${unitName(unitIndex)}只剩 ${cellName(index)} 未填，缺少的數字是 ${digit}。`, UNITS[unitIndex]);
-      progressed = true;
-      break;
+      if (place(index, digit, 'fullHouse', `${unitName(unitIndex)}只剩 ${cellName(index)} 未填，缺少的數字是 ${digit}。`, UNITS[unitIndex])) {
+        progressed = true;
+        break;
+      }
     }
     if (progressed) continue;
 
-    const naked = [...candidateMap.entries()].find(([, values]) => values.size === 1);
+    const naked = [...candidateMap.entries()].find(([index, values]) => values.size === 1 && !excluded.has(placementKey(index, [...values][0])));
     if (naked) {
       const [index, values] = naked;
       const digit = [...values][0];
@@ -479,9 +500,10 @@ export function logicalSolve(source, { includeSnapshots = false } = {}) {
         if (unit.some((index) => grid[index] === digit)) continue;
         const possible = unit.filter((index) => candidateMap.get(index)?.has(digit));
         if (possible.length === 1) {
-          place(possible[0], digit, 'hiddenSingle', `${unitName(unitIndex)}裡，只有 ${cellName(possible[0])} 還能放 ${digit}。`, unit);
-          progressed = true;
-          break;
+          if (place(possible[0], digit, 'hiddenSingle', `${unitName(unitIndex)}裡，只有 ${cellName(possible[0])} 還能放 ${digit}。`, unit)) {
+            progressed = true;
+            break;
+          }
         }
       }
     }
@@ -539,6 +561,7 @@ export function logicalSolve(source, { includeSnapshots = false } = {}) {
     if (findFish(3)) continue;
     if (findFish(4)) continue;
 
+    if (!allowSearch) break;
     const solution = solveGrid(grid);
     if (!solution) return { solved: false, invalid: true, grid, steps, hardest };
     const [index] = [...candidateMap.entries()].sort((left, right) => left[1].size - right[1].size || left[0] - right[0])[0];
@@ -579,6 +602,25 @@ export function analyzePuzzle(source) {
   const rating = RATING[logical.hardest] || RATING.search;
   const techniqueCounts = logical.steps.reduce((counts, step) => ({ ...counts, [step.strategy]: (counts[step.strategy] || 0) + 1 }), {});
   return { valid: true, unique: true, solutionCount, clues, solution: logical.grid, steps: logical.steps, rating, techniqueCounts, logicalOnly: !techniqueCounts.search };
+}
+
+export function suggestNextMoves(source, { limit = 3 } = {}) {
+  assertGrid(source);
+  const validation = validateGrid(source);
+  if (!validation.valid || !solveGrid(source)) return { status: 'invalid', suggestions: [] };
+  if (isSolved(source)) return { status: 'solved', suggestions: [] };
+
+  const targetCount = Math.max(1, Math.min(3, Math.floor(Number(limit) || 3)));
+  const excludedActions = [];
+  const suggestions = [];
+  while (suggestions.length < targetCount) {
+    const analysis = logicalSolve(source, { stopAfterFirst: true, excludedActions, allowSearch: false });
+    const suggestion = analysis.steps[0];
+    if (!suggestion?.actionKey) break;
+    suggestions.push(suggestion);
+    excludedActions.push(suggestion.actionKey);
+  }
+  return { status: suggestions.length ? 'ok' : 'none', suggestions };
 }
 
 export function nextHint(source) {

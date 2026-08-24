@@ -7,16 +7,16 @@ import {
   generatePuzzle,
   getCompletedDigits,
   isSolved,
-  nextHint,
+  suggestNextMoves,
   parsePuzzle,
   serializeGrid,
   validateGrid
-} from './core/sudoku.js?v=20260824-learning6';
-import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-learning6';
-import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-learning6';
-import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-learning6';
-import { getTutorial } from './learning/tutorials.js?v=20260824-learning6';
-import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260824-learning6';
+} from './core/sudoku.js?v=20260824-coach1';
+import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-coach1';
+import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-coach1';
+import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-coach1';
+import { getTutorial } from './learning/tutorials.js?v=20260824-coach1';
+import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260824-coach1';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
@@ -48,6 +48,7 @@ const state = {
   conflicts: new Set(),
   wrong: new Set(),
   hint: null,
+  suggestions: [],
   elapsed: 0,
   timerId: null,
   completed: false,
@@ -152,6 +153,68 @@ function setCoach(number, title, body, concept = '') {
   }
 }
 
+function suggestionTarget(step) {
+  return step.kind === 'placement' ? step.index : step.indices?.[0];
+}
+
+function suggestionAction(step) {
+  if (step.kind === 'placement') return `${cellName(step.index)}填入 ${step.digit}`;
+  const grouped = new Map();
+  for (const { index, digit } of step.eliminations || []) {
+    if (!grouped.has(index)) grouped.set(index, []);
+    grouped.get(index).push(digit);
+  }
+  const parts = [...grouped.entries()].map(([index, digits]) => `${cellName(index)}刪除 ${digits.sort().join('、')}`);
+  return parts.length <= 3 ? parts.join('；') : `${parts.slice(0, 3).join('；')}；另 ${parts.length - 3} 格`;
+}
+
+function focusSuggestion(step) {
+  state.hint = { ...step, index: suggestionTarget(step), targets: step.kind === 'placement' ? [step.index] : step.indices };
+  state.selected = suggestionTarget(step);
+  byId('apply-hint-btn').hidden = step.kind !== 'placement';
+  renderBoard();
+}
+
+function renderSuggestions(suggestions) {
+  coachContent.replaceChildren();
+  const label = document.createElement('span');
+  label.className = 'lesson-number';
+  label.textContent = `目前盤面 · ${suggestions.length} 個建議`;
+  const heading = document.createElement('h2');
+  heading.textContent = '由簡到難的可行下一手';
+  const intro = document.createElement('p');
+  intro.textContent = '每一項都直接成立於目前盤面；選擇一項可在盤面定位，但不會自動修改答案。';
+  const list = document.createElement('ol');
+  list.className = 'suggestion-list';
+  suggestions.forEach((step, index) => {
+    const item = document.createElement('li');
+    const meta = document.createElement('span');
+    meta.className = 'suggestion-meta';
+    meta.textContent = `建議 ${index + 1} · ${strategyNames[step.strategy] || step.strategy}`;
+    const action = document.createElement('b');
+    action.textContent = suggestionAction(step);
+    const reason = document.createElement('p');
+    reason.textContent = step.explanation;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = step.kind === 'placement' ? '定位並可套用' : '定位排除範圍';
+    button.addEventListener('click', () => focusSuggestion(step));
+    item.append(meta, action, reason, button);
+    list.append(item);
+  });
+  coachContent.append(label, heading, intro, list);
+  if (suggestions.length < 3) {
+    const note = document.createElement('div');
+    note.className = 'concept-box';
+    const strong = document.createElement('b');
+    strong.textContent = '掃描結果';
+    const detail = document.createElement('p');
+    detail.textContent = `依難度檢查目前已支援的邏輯技巧後，只找到 ${suggestions.length} 個不重複的下一手。`;
+    note.append(strong, detail);
+    coachContent.append(note);
+  }
+}
+
 function initializeBoard() {
   const fragment = document.createDocumentFragment();
   for (let index = 0; index < 81; index += 1) {
@@ -183,7 +246,7 @@ function renderBoard() {
     if (value && completedDigits.has(value)) cell.classList.add('digit-completed');
     if (state.conflicts.has(index)) cell.classList.add('conflict');
     if (state.wrong.has(index)) cell.classList.add('wrong');
-    if (state.hint?.index === index) cell.classList.add('hint-target');
+    if (state.hint?.targets?.includes(index) || state.hint?.index === index) cell.classList.add('hint-target');
     if (state.hint?.related?.includes(index)) cell.classList.add('hint-related');
     cell.replaceChildren();
     if (value) {
@@ -227,6 +290,7 @@ function renderProgress() {
 function selectCell(index) {
   state.selected = index;
   state.hint = null;
+  state.suggestions = [];
   byId('apply-hint-btn').hidden = true;
   const value = state.grid[index];
   if (state.record.puzzle[index]) {
@@ -255,8 +319,10 @@ function updateValidation() {
 function enterNumber(digit) {
   const index = state.selected;
   if (index < 0 || state.record.puzzle[index] || state.completed) return;
+  const hadSuggestions = state.suggestions.length > 0;
   saveHistory();
   state.hint = null;
+  state.suggestions = [];
   byId('apply-hint-btn').hidden = true;
   if (state.notesMode && !state.grid[index]) {
     if (state.notes[index].has(digit)) state.notes[index].delete(digit);
@@ -271,6 +337,7 @@ function enterNumber(digit) {
   persistSession();
   if (!validation.valid) showToast('這個數字與同一單位中的數字重複。', 'warning');
   if (isSolved(state.grid)) completePuzzle();
+  else if (hadSuggestions) setCoach('盤面已更新', '先前的建議已失效', '每次填數都會改變候選集合；請先觀察連鎖效果，再重新分析下一手。');
 }
 
 function eraseSelected() {
@@ -280,6 +347,7 @@ function eraseSelected() {
   state.grid[index] = 0;
   state.notes[index].clear();
   state.hint = null;
+  state.suggestions = [];
   updateValidation();
   renderBoard();
   persistSession();
@@ -291,6 +359,7 @@ function undo() {
   state.grid = snapshot.grid;
   state.notes = snapshot.notes.map((values) => new Set(values));
   state.hint = null;
+  state.suggestions = [];
   updateValidation();
   renderBoard();
   persistSession();
@@ -304,6 +373,7 @@ function resetPuzzle() {
   state.elapsed = 0;
   state.selected = -1;
   state.hint = null;
+  state.suggestions = [];
   updateValidation();
   setCoach('重新開始', '盤面已回到最初狀態', '先掃描每個九宮，找出候選數最少的空格。', '優先處理唯一候選，通常能打開後續推理。');
   renderBoard();
@@ -334,28 +404,33 @@ function requestHint() {
     renderBoard();
     return;
   }
-  const hint = nextHint(state.grid);
-  if (!hint) {
-    setCoach('暫時無法分析', '這個盤面可能無解或已完成', '請檢查先前輸入，或使用「題目分析」查看完整結果。');
+  const result = suggestNextMoves(state.grid, { limit: 3 });
+  if (!result.suggestions.length) {
+    state.hint = null;
+    state.suggestions = [];
+    byId('apply-hint-btn').hidden = true;
+    if (result.status === 'solved') setCoach('分析完成', '這一題已經完成', '目前不需要下一手。');
+    else if (result.status === 'invalid') setCoach('無法分析', '目前盤面無法繼續求解', '盤面可能有衝突，或先前填入的數字已造成無解；請先修正。');
+    else setCoach('沒有邏輯建議', '已依難度掃描，但找不到可直接成立的下一手', '不會用搜尋猜答案冒充技巧。你可補齊候選筆記，或到題目分析查看搜尋邊界。');
     return;
   }
-  state.hint = hint;
+  state.suggestions = result.suggestions;
+  focusSuggestion(result.suggestions[0]);
   state.learning.hintsUsed += 1;
-  recordActivity('hint', `使用「${strategyNames[hint.strategy] || hint.strategy}」提示`);
-  state.selected = hint.index;
-  const setup = hint.setup.length ? `前置推理：${hint.setup.map((step) => strategyNames[step.strategy]).join('、')}。` : '';
-  setCoach(`提示 · ${strategyNames[hint.strategy]}`, `${cellName(hint.index)}可以填 ${hint.digit}`, hint.explanation, setup || '先自己確認排除過程，再決定是否套用這一步。');
-  byId('apply-hint-btn').hidden = false;
-  renderBoard();
+  const techniques = [...new Set(result.suggestions.map((step) => strategyNames[step.strategy] || step.strategy))];
+  recordActivity('hint', `分析 ${result.suggestions.length} 個下一手：${techniques.join('、')}`);
+  renderSuggestions(result.suggestions);
 }
 
 function applyHint() {
-  if (!state.hint) return;
+  if (!state.hint || state.hint.kind !== 'placement') return;
+  const applied = state.hint;
   state.notesMode = false;
-  state.selected = state.hint.index;
-  enterNumber(state.hint.digit);
+  state.selected = applied.index;
+  enterNumber(applied.digit);
   byId('notes-btn').classList.remove('active');
   byId('notes-btn').querySelector('b').textContent = '關';
+  if (!state.completed) setCoach(`已套用 · ${strategyNames[applied.strategy] || applied.strategy}`, `${cellName(applied.index)}已填入 ${applied.digit}`, '盤面候選已重新計算；請先觀察這一步帶來的連鎖效果，再分析新的下一手。', applied.explanation);
 }
 
 function checkAnswer() {
@@ -380,6 +455,7 @@ function loadPuzzle(record, title = '', { persist = true } = {}) {
   state.conflicts.clear();
   state.wrong.clear();
   state.hint = null;
+  state.suggestions = [];
   state.elapsed = 0;
   state.completed = false;
   state.activeDrill = null;
@@ -404,6 +480,7 @@ function restoreSession(session) {
   state.conflicts = new Set();
   state.wrong = new Set();
   state.hint = null;
+  state.suggestions = [];
   state.elapsed = Number(session.elapsed || 0);
   state.completed = Boolean(session.completed);
   state.activeDrill = session.activeDrill ? DRILL_BY_TECHNIQUE.get(session.activeDrill) || null : null;
