@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#16372f">
   <meta name="description" content="從候選數到進階策略，會解釋每一步的數獨學習網站。">
   <title>數織學堂｜Sudoku Learning Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20260825-trial2">
+  <link rel="stylesheet" href="./styles.css?v=20260825-levels2">
 </head>
 <body>
   <div class="page-shell">
@@ -90,19 +90,31 @@
       </section>
 
       <section id="generator-view" class="view tool-view">
-        <div class="tool-copy"><p class="eyebrow">PUZZLE GENERATOR</p><h1>為今天的狀態，<br>出一題剛好的題目。</h1><p>每題在瀏覽器內即時生成，保證只有一個解。種子碼讓老師與學生能重現完全相同的題目。</p></div>
+        <div class="tool-copy"><p class="eyebrow">300-PUZZLE CURRICULUM</p><h1>五階三十級，<br>一步一步練上去。</h1><p>每級 10 題，共 300 題。空格由少到多，並以實際求解路徑校驗技巧層級、唯一解與可重現性。</p></div>
         <div class="tool-card generator-card">
-          <label>選擇難度</label>
-          <div class="difficulty-options" role="radiogroup">
-            <button class="selected" data-difficulty="easy" type="button"><b>入門</b><span>單一候選</span></button>
-            <button data-difficulty="medium" type="button"><b>進階</b><span>隱性單數</span></button>
-            <button data-difficulty="hard" type="button"><b>挑戰</b><span>區塊排除</span></button>
-            <button data-difficulty="expert" type="button"><b>專家</b><span>綜合推理</span></button>
-          </div>
-          <label for="seed-input">題目種子碼 <small>（可留白自動產生）</small></label>
-          <div class="seed-row"><input id="seed-input" maxlength="24" placeholder="例如 TAIPEI-0816"><button id="random-seed-btn" type="button">換一組</button></div>
-          <div class="generator-facts"><div><span>唯一解</span><b>✓</b></div><div><span>種子可重現</span><b>✓</b></div><div><span>本機生成</span><b>✓</b></div></div>
-          <button id="generate-btn" class="primary-btn" type="button">生成並開始解題 <span>→</span></button>
+          <div class="level-bank-heading"><div><span>分級題庫</span><b id="bank-progress">已完成 0 / 300</b></div><small>每題均通過唯一解、空格數與技巧層級校驗</small></div>
+          <div id="level-stage-tabs" class="level-stage-tabs" role="tablist" aria-label="選擇學習階段"></div>
+          <div id="level-options" class="level-options" aria-label="選擇級別"></div>
+          <section id="level-summary" class="level-summary" aria-live="polite"></section>
+          <label>選擇本級題目</label>
+          <div id="level-question-options" class="level-question-options" aria-label="選擇題號"></div>
+          <button id="bank-start-btn" class="primary-btn" type="button">開始分級練習 <span>→</span></button>
+
+          <details class="custom-generator">
+            <summary>自由種子出題</summary>
+            <p>保留原本的可重現出題器，適合課外加練。</p>
+            <label>選擇難度</label>
+            <div class="difficulty-options" role="radiogroup">
+              <button class="selected" data-difficulty="easy" type="button"><b>入門</b><span>單一候選</span></button>
+              <button data-difficulty="medium" type="button"><b>進階</b><span>隱性單數</span></button>
+              <button data-difficulty="hard" type="button"><b>挑戰</b><span>區塊排除</span></button>
+              <button data-difficulty="expert" type="button"><b>專家</b><span>綜合推理</span></button>
+            </div>
+            <label for="seed-input">題目種子碼 <small>（可留白自動產生）</small></label>
+            <div class="seed-row"><input id="seed-input" maxlength="24" placeholder="例如 TAIPEI-0816"><button id="random-seed-btn" type="button">換一組</button></div>
+            <div class="generator-facts"><div><span>唯一解</span><b>✓</b></div><div><span>種子可重現</span><b>✓</b></div><div><span>本機生成</span><b>✓</b></div></div>
+            <button id="generate-btn" class="primary-btn" type="button">生成自由練習 <span>→</span></button>
+          </details>
         </div>
       </section>
 
@@ -144,6 +156,7 @@
             <a href="https://www.sudokuwiki.org/Empty_Rectangles" target="_blank" rel="noreferrer">SudokuWiki · Empty Rectangles ↗</a>
             <a href="https://www.sudokuwiki.org/BUG" target="_blank" rel="noreferrer">SudokuWiki · BUG+1 ↗</a>
             <a href="https://www.conceptispuzzles.com/index.aspx?uri=puzzle/sudoku/techniques" target="_blank" rel="noreferrer">Conceptis · 掃描到 X-Wing ↗</a>
+            <a href="https://norvig.com/sudoku.html" target="_blank" rel="noreferrer">Peter Norvig · Top95 高難題來源 ↗</a>
           </div>
         </aside>
       </section>
@@ -151,6 +164,6 @@
     <footer><span>數織學堂 · 在本機思考，在每一步學習</span><span>無廣告 · 無登入 · 資料不離開裝置</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./src/app.js?v=20260825-trial2"></script>
+  <script type="module" src="./src/app.js?v=20260825-levels2"></script>
 </body>
 </html>

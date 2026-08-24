@@ -180,7 +180,39 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .generator-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 24px 0; }
 .generator-facts div { display: flex; justify-content: space-between; padding: 12px; background: var(--mint-light); border-radius: 9px; color: var(--ink-soft); font-size: 10px; }
 .generator-facts b { color: var(--green); }
-.generator-card > .primary-btn { width: 100%; }
+.generator-card > .primary-btn, .custom-generator > .primary-btn { width: 100%; }
+.level-bank-heading { display: grid; gap: 5px; margin-bottom: 16px; }
+.level-bank-heading > div { display: flex; justify-content: space-between; gap: 12px; }
+.level-bank-heading span { font-weight: 800; }
+.level-bank-heading b { color: var(--coral); font-size: 12px; }
+.level-bank-heading small { color: var(--ink-soft); }
+.level-stage-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.level-stage-tabs button { min-width: 0; padding: 11px 4px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink-soft); background: #fff; cursor: pointer; }
+.level-stage-tabs button b, .level-stage-tabs button small { display: block; }
+.level-stage-tabs button b { color: var(--green); font-size: 13px; }
+.level-stage-tabs button small { margin-top: 3px; font-size: 9px; }
+.level-stage-tabs button.selected { color: #fff; border-color: var(--green); background: var(--green); }
+.level-stage-tabs button.selected b { color: #fff; }
+.level-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 10px; }
+.level-option { display: grid; gap: 3px; padding: 11px 9px; text-align: left; border: 1px solid var(--line); border-radius: 11px; background: #fff; cursor: pointer; }
+.level-option b { color: var(--green); }
+.level-option span { overflow: hidden; color: var(--ink-soft); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.level-option small { color: var(--coral); font-size: 9px; }
+.level-option.selected { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); background: var(--mint-light); }
+.level-option.complete::after { content: '✓ 本級完成'; color: var(--green); font-size: 9px; font-weight: 800; }
+.level-summary { margin: 12px 0 18px; padding: 14px; border-left: 3px solid var(--coral); border-radius: 8px; background: #fbf3ed; }
+.level-summary h3 { margin: 0 0 6px; font-size: 17px; }
+.level-summary p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.55; }
+.level-summary .level-metrics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.level-summary .level-metrics span { padding: 5px 8px; border-radius: 99px; color: var(--green); background: #fff; font-size: 10px; font-weight: 700; }
+.level-question-options { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; margin-bottom: 16px; }
+.level-question-options button { aspect-ratio: 1; padding: 0; border: 1px solid var(--line); border-radius: 8px; color: var(--green); background: #fff; cursor: pointer; }
+.level-question-options button.selected { color: #fff; border-color: var(--coral); background: var(--coral); }
+.level-question-options button.complete:not(.selected) { border-color: #9fc1b5; background: var(--mint); }
+.custom-generator { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.custom-generator summary { color: var(--green); font-size: 13px; font-weight: 800; cursor: pointer; }
+.custom-generator > p { margin: 10px 0 16px; color: var(--ink-soft); font-size: 11px; }
+.custom-generator > label { display: block; margin: 18px 0 9px; font-size: 12px; font-weight: 700; }
 
 .analyzer-card textarea { resize: vertical; min-height: 124px; padding: 14px; font-family: ui-monospace, Consolas, monospace; line-height: 1.7; letter-spacing: .08em; }
 .analyzer-actions { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin-top: 12px; }
@@ -377,6 +409,9 @@ footer { display: flex; justify-content: space-between; padding: 24px 0 35px; bo
   .check-btn { width: calc(100% - 44px); margin-left: 22px; margin-right: 22px; }
   .tool-view.active { padding: 45px 0 65px; }
   .tool-card { padding: 22px 16px; }
+  .level-stage-tabs { grid-template-columns: repeat(5, minmax(58px, 1fr)); overflow-x: auto; padding-bottom: 4px; }
+  .level-options { grid-template-columns: repeat(2, 1fr); }
+  .level-question-options { grid-template-columns: repeat(5, 1fr); }
   .difficulty-options { grid-template-columns: repeat(2, 1fr); }
   .analyzer-actions { grid-template-columns: 1fr; }
   .analyzer-actions > button:first-child { min-height: 42px; }

@@ -6,6 +6,7 @@
   "description": "Pure-frontend Traditional Chinese Sudoku learning studio",
   "scripts": {
     "start": "node tools/serve.mjs",
+    "build:levels": "node tools/build-level-bank.mjs",
     "test": "node --test"
   },
   "engines": {

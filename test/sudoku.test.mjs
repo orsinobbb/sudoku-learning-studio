@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   PEERS,
+  TECHNIQUE_RANKS,
   analyzePuzzle,
   candidateNotesForGrid,
   candidatesFor,
@@ -28,6 +29,7 @@ import {
   validateManualTechniqueQuestion
 } from '../src/learning/manual-assessments.js';
 import { TUTORIALS } from '../src/learning/tutorials.js';
+import { LEVELS, LEVEL_STAGES, TOTAL_LEVEL_PUZZLES, getLevelPuzzle } from '../src/learning/level-catalog.js';
 import { PROGRESS_KEY, SESSION_KEY, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
 import {
   clearTrials,
@@ -337,7 +339,7 @@ test('progress migrates and puzzle sessions round-trip through browser storage',
   assert.equal(migrated.solvedCount, 2);
   assert.deepEqual(migrated.lessonResults, {});
   writeProgress({ ...migrated, lessonResults: { rules: { knowledgePassed: true } } }, storage);
-  assert.equal(JSON.parse(values.get(PROGRESS_KEY)).version, 4);
+  assert.equal(JSON.parse(values.get(PROGRESS_KEY)).version, 5);
   const record = generatePuzzle({ difficulty: 'easy', seed: 'SAVE' });
   writeSession({ id: 'one', record, grid: record.puzzle, notes: Array.from({ length: 81 }, () => []), elapsed: 42 }, storage);
   assert.equal(readSession(storage).elapsed, 42);
@@ -421,4 +423,34 @@ test('trial errors use board conflicts instead of comparing the solution', () =>
   assert.ok(Number.isInteger(peer));
   grid[index] = grid[peer];
   assert.deepEqual(trialConflictIndices(trial, validateGrid(grid).conflicts), [index]);
+});
+
+test('five-stage curriculum contains 30 ordered levels and 300 verified puzzles', () => {
+  assert.equal(LEVEL_STAGES.length, 5);
+  assert.equal(LEVELS.length, 30);
+  assert.equal(TOTAL_LEVEL_PUZZLES, 300);
+  assert.deepEqual(LEVEL_STAGES.map((stage) => LEVELS.filter((level) => level.stage === stage.number).length), [6, 6, 6, 6, 6]);
+
+  const puzzleIds = new Set();
+  const puzzleGrids = new Set();
+  let previousBlanks = 0;
+  for (const level of LEVELS) {
+    if (level.level > 1) assert.equal(level.blanks, previousBlanks + 1, `Lv.${level.level} must add exactly one blank`);
+    previousBlanks = level.blanks;
+    assert.equal(level.questionCount, 10);
+    for (let question = 1; question <= level.questionCount; question += 1) {
+      const record = getLevelPuzzle(level.level, question);
+      const report = analyzePuzzle(record.puzzle);
+      const hardest = report.steps.reduce((result, step) => TECHNIQUE_RANKS[step.strategy] > TECHNIQUE_RANKS[result] ? step.strategy : result, 'fullHouse');
+      assert.equal(record.puzzle.filter((value) => !value).length, level.blanks, record.id);
+      assert.equal(report.unique, true, record.id);
+      assert.equal(isSolved(record.solution), true, record.id);
+      assert.equal(hardest, level.focusTechnique, record.id);
+      assert.ok(TECHNIQUE_RANKS[hardest] >= level.minRank && TECHNIQUE_RANKS[hardest] <= level.maxRank, record.id);
+      puzzleIds.add(record.id);
+      puzzleGrids.add(serializeGrid(record.puzzle));
+    }
+  }
+  assert.equal(puzzleIds.size, 300);
+  assert.equal(puzzleGrids.size, 300);
 });

@@ -26,6 +26,17 @@ export const DIFFICULTIES = {
   expert: { label: '專家', subtitle: '綜合推理' }
 };
 
+export const TECHNIQUE_RANKS = {
+  fullHouse: 1, nakedSingle: 1, hiddenSingle: 2,
+  lockedPointing: 3, lockedClaiming: 3,
+  nakedPair: 4, hiddenPair: 4,
+  nakedTriple: 5, hiddenTriple: 5, nakedQuad: 5, hiddenQuad: 5,
+  xWing: 6, skyscraper: 7, kite: 7, emptyRectangle: 7, xyWing: 7, swordfish: 7,
+  xyzWing: 8, wWing: 8, jellyfish: 8, simpleColoring: 9, xChain: 9,
+  xyChain: 10, aic: 10, finnedFish: 10, als: 11, sueDeCoq: 11,
+  uniqueRectangle: 12, bugPlusOne: 12, forcingChain: 13, search: 14
+};
+
 const CALIBRATED_TEMPLATES = {
   easy: '530070000600195000098000060800060003400803001700020006060000280000419005000080079',
   medium: '000000907000420180000705026100904000050000040000507009920108000034059000507000000',
@@ -231,27 +242,31 @@ export function generateSolution(seed = 'SUDOKU') {
   return rows.flatMap((row) => cols.map((col) => digits[pattern(row, col)]));
 }
 
-export function generatePuzzle({ difficulty = 'easy', seed = 'SUDOKU' } = {}) {
-  const config = DIFFICULTIES[difficulty];
-  if (!config) throw new Error(`未知難度：${difficulty}`);
-  const normalizedSeed = String(seed || 'SUDOKU').trim().toUpperCase();
-  const source = parsePuzzle(CALIBRATED_TEMPLATES[difficulty]);
-  const random = seededRandom(`${normalizedSeed}:TRANSFORM:${difficulty}`);
+export function transformPuzzle(source, seed = 'SUDOKU') {
+  assertGrid(source);
+  const random = seededRandom(String(seed));
   const bands = shuffle([0, 1, 2], random);
   const stacks = shuffle([0, 1, 2], random);
   const rows = bands.flatMap((band) => shuffle([0, 1, 2], random).map((row) => band * 3 + row));
   const cols = stacks.flatMap((stack) => shuffle([0, 1, 2], random).map((col) => stack * 3 + col));
   const digits = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9], random);
   const transpose = random() > 0.5;
-  const puzzle = Array(81).fill(0);
-  for (let row = 0; row < 9; row += 1) {
-    for (let col = 0; col < 9; col += 1) {
-      const sourceRow = transpose ? rows[col] : rows[row];
-      const sourceCol = transpose ? cols[row] : cols[col];
-      const value = source[sourceRow * 9 + sourceCol];
-      puzzle[row * 9 + col] = value ? digits[value - 1] : 0;
-    }
-  }
+  return Array.from({ length: 81 }, (_, index) => {
+    const row = Math.floor(index / 9);
+    const col = index % 9;
+    const sourceRow = transpose ? rows[col] : rows[row];
+    const sourceCol = transpose ? cols[row] : cols[col];
+    const value = source[sourceRow * 9 + sourceCol];
+    return value ? digits[value - 1] : 0;
+  });
+}
+
+export function generatePuzzle({ difficulty = 'easy', seed = 'SUDOKU' } = {}) {
+  const config = DIFFICULTIES[difficulty];
+  if (!config) throw new Error(`未知難度：${difficulty}`);
+  const normalizedSeed = String(seed || 'SUDOKU').trim().toUpperCase();
+  const source = parsePuzzle(CALIBRATED_TEMPLATES[difficulty]);
+  const puzzle = transformPuzzle(source, `${normalizedSeed}:TRANSFORM:${difficulty}`);
   const solution = solveGrid(puzzle);
   if (!solution || countSolutions(puzzle, 2) !== 1) throw new Error('校準題庫未通過唯一解驗證。');
 
@@ -309,16 +324,7 @@ export function logicalSolve(source, { includeSnapshots = false, stopAfterFirst 
   const steps = [];
   const excluded = new Set(excludedActions);
   let hardest = 'fullHouse';
-  const ranks = {
-    fullHouse: 1, nakedSingle: 1, hiddenSingle: 2,
-    lockedPointing: 3, lockedClaiming: 3,
-    nakedPair: 4, hiddenPair: 4,
-    nakedTriple: 5, hiddenTriple: 5, nakedQuad: 5, hiddenQuad: 5,
-    xWing: 6, skyscraper: 7, kite: 7, emptyRectangle: 7, xyWing: 7, swordfish: 7,
-    xyzWing: 8, wWing: 8, jellyfish: 8, simpleColoring: 9, xChain: 9,
-    xyChain: 10, aic: 10, finnedFish: 10, als: 11, sueDeCoq: 11,
-    uniqueRectangle: 12, bugPlusOne: 12, forcingChain: 13, search: 14
-  };
+  const ranks = TECHNIQUE_RANKS;
 
   function record(step) {
     steps.push({ number: steps.length + 1, ...step });

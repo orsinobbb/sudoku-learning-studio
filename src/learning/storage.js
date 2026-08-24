@@ -11,6 +11,7 @@ export function readProgress(storage = localStorage) {
     solvedCount: Number(raw.solvedCount || 0),
     completedLessons: Array.isArray(raw.completedLessons) ? raw.completedLessons : [],
     completedDrills: Array.isArray(raw.completedDrills) ? raw.completedDrills : [],
+    completedPuzzles: Array.isArray(raw.completedPuzzles) ? raw.completedPuzzles : [],
     activities: Array.isArray(raw.activities) ? raw.activities.slice(0, 60) : [],
     totalActivities: Number(raw.totalActivities || raw.activities?.length || 0),
     hintsUsed: Number(raw.hintsUsed || 0),
@@ -20,7 +21,7 @@ export function readProgress(storage = localStorage) {
 }
 
 export function writeProgress(progress, storage = localStorage) {
-  storage.setItem(PROGRESS_KEY, JSON.stringify({ version: 4, ...progress, updatedAt: new Date().toISOString() }));
+  storage.setItem(PROGRESS_KEY, JSON.stringify({ version: 5, ...progress, updatedAt: new Date().toISOString() }));
 }
 
 export function readSession(storage = localStorage) {
