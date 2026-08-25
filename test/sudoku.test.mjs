@@ -29,7 +29,19 @@ import {
   validateManualTechniqueQuestion
 } from '../src/learning/manual-assessments.js';
 import { TUTORIALS } from '../src/learning/tutorials.js';
-import { LEVELS, LEVEL_STAGES, TOTAL_LEVEL_PUZZLES, getLevelPuzzle } from '../src/learning/level-catalog.js';
+import {
+  LEVELS,
+  LEVEL_STAGES,
+  TOTAL_CHALLENGES,
+  TOTAL_LEVEL_PUZZLES,
+  challengeIdFor,
+  challengeNumberFor,
+  challengeNumberFromId,
+  getChallenge,
+  getLevelPuzzle,
+  getNextChallengeNumber,
+  isChallengeUnlocked
+} from '../src/learning/level-catalog.js';
 import { PROGRESS_KEY, SESSION_KEY, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
 import {
   clearTrials,
@@ -453,4 +465,28 @@ test('five-stage curriculum contains 30 ordered levels and 300 verified puzzles'
   }
   assert.equal(puzzleIds.size, 300);
   assert.equal(puzzleGrids.size, 300);
+});
+
+test('300-stage challenge maps every puzzle once and unlocks sequentially', () => {
+  assert.equal(TOTAL_CHALLENGES, 300);
+  for (let number = 1; number <= TOTAL_CHALLENGES; number += 1) {
+    const record = getChallenge(number);
+    assert.equal(record.challengeNumber, number);
+    assert.equal(challengeNumberFor(record.level, record.question), number);
+    assert.equal(challengeIdFor(number), record.id);
+    assert.equal(challengeNumberFromId(record.id), number);
+  }
+
+  const completed = new Set();
+  assert.equal(getNextChallengeNumber(completed), 1);
+  assert.equal(isChallengeUnlocked(1, completed), true);
+  assert.equal(isChallengeUnlocked(2, completed), false);
+  completed.add(challengeIdFor(1));
+  assert.equal(getNextChallengeNumber(completed), 2);
+  assert.equal(isChallengeUnlocked(1, completed), true);
+  assert.equal(isChallengeUnlocked(2, completed), true);
+  assert.equal(isChallengeUnlocked(3, completed), false);
+  for (let number = 2; number <= TOTAL_CHALLENGES; number += 1) completed.add(challengeIdFor(number));
+  assert.equal(getNextChallengeNumber(completed), null);
+  assert.equal(isChallengeUnlocked(300, completed), true);
 });

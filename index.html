@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#16372f">
   <meta name="description" content="從候選數到進階策略，會解釋每一步的數獨學習網站。">
   <title>數織學堂｜Sudoku Learning Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20260825-levels2">
+  <link rel="stylesheet" href="./styles.css?v=20260825-challenge1">
 </head>
 <body>
   <div class="page-shell">
@@ -85,20 +85,20 @@
             </div>
             <div class="completion-meter"><div><span>完成度</span><strong id="completion-label">0%</strong></div><div class="meter"><i id="completion-bar"></i></div></div>
             <button id="check-btn" class="check-btn" type="button">檢查目前答案</button>
+            <button id="next-challenge-btn" class="next-challenge-btn" type="button" hidden>進入下一關 <span>→</span></button>
           </aside>
         </div>
       </section>
 
       <section id="generator-view" class="view tool-view">
-        <div class="tool-copy"><p class="eyebrow">300-PUZZLE CURRICULUM</p><h1>五階三十級，<br>一步一步練上去。</h1><p>每級 10 題，共 300 題。空格由少到多，並以實際求解路徑校驗技巧層級、唯一解與可重現性。</p></div>
+        <div class="tool-copy"><p class="eyebrow">300-STAGE CHALLENGE</p><h1>破關挑戰 300 關，<br>一步一步練上去。</h1><p>五階、三十級、共 300 關。依序破關解鎖；已過關可重玩，每關都標示空格數與實際求解技巧。</p></div>
         <div class="tool-card generator-card">
-          <div class="level-bank-heading"><div><span>分級題庫</span><b id="bank-progress">已完成 0 / 300</b></div><small>每題均通過唯一解、空格數與技巧層級校驗</small></div>
-          <div id="level-stage-tabs" class="level-stage-tabs" role="tablist" aria-label="選擇學習階段"></div>
-          <div id="level-options" class="level-options" aria-label="選擇級別"></div>
+          <div class="level-bank-heading"><div><span>300 關破關地圖</span><b id="bank-progress">已破關 0 / 300</b></div><small id="challenge-status">從第 1 關開始，逐關解鎖</small></div>
+          <div class="challenge-progress" aria-hidden="true"><i id="challenge-progress-bar"></i></div>
+          <div id="level-stage-tabs" class="level-stage-tabs" role="tablist" aria-label="選擇挑戰階段"></div>
+          <div id="challenge-map" class="challenge-map" aria-label="關卡地圖"></div>
           <section id="level-summary" class="level-summary" aria-live="polite"></section>
-          <label>選擇本級題目</label>
-          <div id="level-question-options" class="level-question-options" aria-label="選擇題號"></div>
-          <button id="bank-start-btn" class="primary-btn" type="button">開始分級練習 <span>→</span></button>
+          <button id="bank-start-btn" class="primary-btn" type="button">挑戰第 1 關 <span>→</span></button>
 
           <details class="custom-generator">
             <summary>自由種子出題</summary>
@@ -164,6 +164,6 @@
     <footer><span>數織學堂 · 在本機思考，在每一步學習</span><span>無廣告 · 無登入 · 資料不離開裝置</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./src/app.js?v=20260825-levels2"></script>
+  <script type="module" src="./src/app.js?v=20260825-challenge1"></script>
 </body>
 </html>

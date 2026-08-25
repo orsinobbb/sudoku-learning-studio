@@ -31,7 +31,16 @@ import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-advanced1';
 import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-advanced1';
 import { getTutorial } from './learning/tutorials.js?v=20260824-advanced1';
 import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260825-levels2';
-import { LEVELS, LEVEL_STAGES, TOTAL_LEVEL_PUZZLES, getLevel, getLevelPuzzle } from './learning/level-catalog.js?v=20260825-levels2';
+import {
+  LEVELS,
+  LEVEL_STAGES,
+  TOTAL_CHALLENGES,
+  challengeIdFor,
+  challengeNumberFromId,
+  getChallenge,
+  getNextChallengeNumber,
+  isChallengeUnlocked
+} from './learning/level-catalog.js?v=20260825-challenge1';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
@@ -53,6 +62,8 @@ const learningProfile = {
   analysesRun: Number(storedProgress.analysesRun || 0),
   lessonResults: storedProgress.lessonResults
 };
+const initialChallengeNumber = getNextChallengeNumber(learningProfile.completedPuzzles) || TOTAL_CHALLENGES;
+const initialChallenge = getChallenge(initialChallengeNumber);
 
 const state = {
   record: null,
@@ -76,9 +87,10 @@ const state = {
   solvedCount: Number(storedProgress.solvedCount || 0),
   learning: learningProfile,
   generatorDifficulty: 'easy',
-  selectedStage: 1,
-  selectedLevel: 1,
-  selectedQuestion: 1
+  selectedStage: initialChallenge.stage,
+  selectedLevel: initialChallenge.level,
+  selectedQuestion: initialChallenge.question,
+  selectedChallenge: initialChallengeNumber
 };
 
 function persistProgress() {
@@ -133,41 +145,60 @@ function randomSeed() {
   return `STUDIO-${bytes[0].toString(36).slice(-4)}${bytes[1].toString(36).slice(-4)}`.toUpperCase();
 }
 
-function firstOpenQuestion(levelNumber) {
-  return Array.from({ length: 10 }, (_, index) => index + 1)
-    .find((question) => !state.learning.completedPuzzles.has(`L${String(levelNumber).padStart(2, '0')}-Q${String(question).padStart(2, '0')}`)) || 1;
-}
-
 function renderLevelPicker() {
-  const selectedLevel = getLevel(state.selectedLevel) || LEVELS[0];
   const completed = state.learning.completedPuzzles;
-  byId('bank-progress').textContent = `已完成 ${completed.size} / ${TOTAL_LEVEL_PUZZLES}`;
+  const completedCount = [...completed].filter((id) => challengeNumberFromId(id)).length;
+  const nextOpen = getNextChallengeNumber(completed);
+  const selectedRecord = getChallenge(state.selectedChallenge);
+  const selectedUnlocked = isChallengeUnlocked(state.selectedChallenge, completed);
+  byId('bank-progress').textContent = `已破關 ${completedCount} / ${TOTAL_CHALLENGES}`;
+  byId('challenge-status').textContent = nextOpen ? `目前可挑戰第 ${nextOpen} 關；完成後解鎖下一關` : '300 關全部完成，所有關卡皆可重玩';
+  byId('challenge-progress-bar').style.width = `${(completedCount / TOTAL_CHALLENGES) * 100}%`;
   byId('level-stage-tabs').innerHTML = LEVEL_STAGES.map((stage) => {
-    const stageLevels = LEVELS.filter((level) => level.stage === stage.number);
-    const done = stageLevels.reduce((total, level) => total + Array.from({ length: 10 }, (_, index) => `L${String(level.level).padStart(2, '0')}-Q${String(index + 1).padStart(2, '0')}`).filter((id) => completed.has(id)).length, 0);
+    const first = (stage.number - 1) * 60 + 1;
+    const done = Array.from({ length: 60 }, (_, index) => challengeIdFor(first + index)).filter((id) => completed.has(id)).length;
     return `<button type="button" role="tab" aria-selected="${stage.number === state.selectedStage}" class="${stage.number === state.selectedStage ? 'selected' : ''}" data-level-stage="${stage.number}"><b>${stage.number}階</b><small>${stage.short} ${done}/60</small></button>`;
   }).join('');
-  byId('level-options').innerHTML = LEVELS.filter((level) => level.stage === state.selectedStage).map((level) => {
-    const ids = Array.from({ length: 10 }, (_, index) => `L${String(level.level).padStart(2, '0')}-Q${String(index + 1).padStart(2, '0')}`);
-    const done = ids.filter((id) => completed.has(id)).length;
-    return `<button type="button" class="level-option ${level.level === state.selectedLevel ? 'selected' : ''} ${done === 10 ? 'complete' : ''}" data-level="${level.level}"><b>Lv.${level.level} · ${level.title}</b><span>${level.blanks} 空格 · ${level.techniqueLabel}</span><small>${done} / 10</small></button>`;
+  byId('challenge-map').innerHTML = LEVELS.filter((level) => level.stage === state.selectedStage).map((level) => {
+    const buttons = Array.from({ length: 10 }, (_, index) => {
+      const number = (level.level - 1) * 10 + index + 1;
+      const id = challengeIdFor(number);
+      const isComplete = completed.has(id);
+      const isCurrent = number === nextOpen;
+      const unlocked = isChallengeUnlocked(number, completed);
+      const stateLabel = isComplete ? '已過關' : isCurrent ? '目前關卡' : '尚未解鎖';
+      return `<button type="button" aria-label="第 ${number} 關，${stateLabel}" class="challenge-node ${number === state.selectedChallenge ? 'selected' : ''} ${isComplete ? 'complete' : ''} ${isCurrent ? 'current' : ''} ${unlocked ? '' : 'locked'}" data-challenge="${number}" ${unlocked ? '' : 'disabled'}><span>${number}</span><small>${isComplete ? '✓' : isCurrent ? 'GO' : '鎖'}</small></button>`;
+    }).join('');
+    const done = Array.from({ length: 10 }, (_, index) => completed.has(challengeIdFor((level.level - 1) * 10 + index + 1))).filter(Boolean).length;
+    return `<section class="challenge-level"><header><div><b>Lv.${level.level} · ${level.techniqueLabel}</b><small>${level.blanks} 格空白 · ${done}/10</small></div></header><div class="challenge-nodes">${buttons}</div></section>`;
   }).join('');
-  byId('level-summary').innerHTML = `<h3>第 ${selectedLevel.stage} 階 · Lv.${selectedLevel.level} ${selectedLevel.title}</h3><p>${LEVEL_STAGES[selectedLevel.stage - 1].description}</p><div class="level-metrics"><span>${selectedLevel.blanks} 格空白</span><span>${selectedLevel.clues} 個題目數字</span><span>最難技巧：${selectedLevel.techniqueLabel}</span><span>唯一解</span></div>`;
-  byId('level-question-options').innerHTML = Array.from({ length: 10 }, (_, index) => {
-    const question = index + 1;
-    const id = `L${String(selectedLevel.level).padStart(2, '0')}-Q${String(question).padStart(2, '0')}`;
-    return `<button type="button" aria-label="第 ${question} 題${completed.has(id) ? '，已完成' : ''}" class="${question === state.selectedQuestion ? 'selected' : ''} ${completed.has(id) ? 'complete' : ''}" data-level-question="${question}">${question}</button>`;
-  }).join('');
-  byId('bank-start-btn').innerHTML = `${completed.has(`L${String(selectedLevel.level).padStart(2, '0')}-Q${String(state.selectedQuestion).padStart(2, '0')}`) ? '重新挑戰' : '開始'} Lv.${selectedLevel.level} 第 ${state.selectedQuestion} 題 <span>→</span>`;
+  const selectedComplete = completed.has(selectedRecord.id);
+  const statusCopy = selectedComplete ? '已過關，可隨時重玩。' : selectedUnlocked ? '目前已解鎖；破關後會開放下一關。' : `請先完成第 ${nextOpen} 關。`;
+  byId('level-summary').innerHTML = `<div class="challenge-summary-head"><span>第 ${selectedRecord.challengeNumber} / ${TOTAL_CHALLENGES} 關</span><b>${selectedComplete ? '已過關' : selectedUnlocked ? '可挑戰' : '未解鎖'}</b></div><h3>第 ${selectedRecord.stage} 階 · Lv.${selectedRecord.level} ${selectedRecord.techniqueLabel}</h3><p>${statusCopy} ${LEVEL_STAGES[selectedRecord.stage - 1].description}</p><div class="level-metrics"><span>${selectedRecord.blanks} 格空白</span><span>${selectedRecord.clues} 個題目數字</span><span>最難技巧：${selectedRecord.techniqueLabel}</span><span>唯一解</span></div>`;
+  byId('bank-start-btn').disabled = !selectedUnlocked;
+  byId('bank-start-btn').innerHTML = `${selectedComplete ? '重新挑戰' : selectedUnlocked ? '挑戰' : '尚未解鎖'}第 ${selectedRecord.challengeNumber} 關 <span>→</span>`;
 }
 
-function selectLevel(levelNumber) {
-  const level = getLevel(levelNumber);
-  if (!level) return;
-  state.selectedStage = level.stage;
-  state.selectedLevel = level.level;
-  state.selectedQuestion = firstOpenQuestion(level.level);
+function selectChallenge(challengeNumber) {
+  const record = getChallenge(challengeNumber);
+  state.selectedChallenge = record.challengeNumber;
+  state.selectedStage = record.stage;
+  state.selectedLevel = record.level;
+  state.selectedQuestion = record.question;
   renderLevelPicker();
+}
+
+function updateNextChallengeButton(challengeNumber = null) {
+  const button = byId('next-challenge-btn');
+  const next = Number(challengeNumber) + 1;
+  const available = challengeNumber !== null && Number.isInteger(next) && next <= TOTAL_CHALLENGES && isChallengeUnlocked(next, state.learning.completedPuzzles);
+  button.hidden = !available;
+  if (available) {
+    button.dataset.challenge = String(next);
+    button.innerHTML = `進入第 ${next} 關 <span>→</span>`;
+  } else {
+    delete button.dataset.challenge;
+  }
 }
 
 function showToast(message, tone = '') {
@@ -601,6 +632,8 @@ function completePuzzle() {
   confirmTrials(state.trial);
   state.completed = true;
   state.solvedCount += 1;
+  const challengeNumber = state.record.challengeNumber || challengeNumberFromId(state.record.bankId);
+  const firstClear = Boolean(state.record.bankId && !state.learning.completedPuzzles.has(state.record.bankId));
   if (state.record.bankId) state.learning.completedPuzzles.add(state.record.bankId);
   if (state.activeDrill) {
     state.learning.completedDrills.add(state.activeDrill.technique);
@@ -609,10 +642,16 @@ function completePuzzle() {
   } else {
     const label = state.record.bankId ? `${state.record.title}（${state.record.techniqueLabel}）` : `${state.record.difficultyLabel}題目`;
     recordActivity('puzzle', `完成「${label}」，用時 ${formatTime(state.elapsed)}`);
-    setCoach('完成', '漂亮的推理！', `你用 ${formatTime(state.elapsed)} 完成這題。`, '完成後回想：是哪一個技巧讓盤面開始連鎖解開？');
+    if (challengeNumber) {
+      const next = challengeNumber < TOTAL_CHALLENGES ? challengeNumber + 1 : null;
+      setCoach(`第 ${challengeNumber} 關破關`, firstClear ? '新關卡已解鎖！' : '重玩完成！', `你用 ${formatTime(state.elapsed)} 完成這題。${next && firstClear ? ` 第 ${next} 關現在可以挑戰。` : ''}`, '完成後回想：是哪一個技巧讓盤面開始連鎖解開？');
+    } else {
+      setCoach('完成', '漂亮的推理！', `你用 ${formatTime(state.elapsed)} 完成這題。`, '完成後回想：是哪一個技巧讓盤面開始連鎖解開？');
+    }
   }
   renderLevelPicker();
-  showToast('恭喜完成！學習紀錄已保存在這個裝置。', 'success');
+  updateNextChallengeButton(challengeNumber);
+  showToast(challengeNumber ? `第 ${challengeNumber} 關破關！進度已保存在這個裝置。` : '恭喜完成！學習紀錄已保存在這個裝置。', 'success');
   renderBoard();
   persistSession();
 }
@@ -687,8 +726,9 @@ function loadPuzzle(record, title = '', { persist = true } = {}) {
   byId('difficulty-badge').textContent = record.difficultyLabel || DIFFICULTIES[record.difficulty]?.label || '練習';
   byId('puzzle-title').textContent = state.title;
   byId('apply-hint-btn').hidden = true;
+  updateNextChallengeButton();
   if (record.bankId) {
-    setCoach(`第 ${record.stage} 階 · Lv.${record.level}`, `${record.techniqueLabel} · ${record.blanks} 格空白`, `這是本級第 ${record.question} / 10 題。先找基礎推進，再觀察本級技巧何時出現。`, '分級同時檢查空格數、唯一解與整題求解路徑；最難技巧不是第一步提示。');
+    setCoach(`第 ${record.challengeNumber} / ${TOTAL_CHALLENGES} 關`, `${record.techniqueLabel} · ${record.blanks} 格空白`, `這是第 ${record.stage} 階、Lv.${record.level} 的第 ${record.question} 關。先找基礎推進，再觀察本級技巧何時出現。`, '關卡同時檢查空格數、唯一解與整題求解路徑；最難技巧不是第一步提示。');
   } else {
     setCoach('觀察 01', '先從候選數最少的格子開始', '點選一個空格，我會整理同行、同列與同宮的關係，並顯示候選數。', '每一步都應該有盤面依據，不必憑感覺猜。');
   }
@@ -717,6 +757,7 @@ function restoreSession(session) {
   byId('difficulty-badge').textContent = state.record.difficultyLabel || DIFFICULTIES[state.record.difficulty]?.label || '練習';
   byId('puzzle-title').textContent = state.title;
   byId('apply-hint-btn').hidden = true;
+  updateNextChallengeButton(state.completed ? (state.record.challengeNumber || challengeNumberFromId(state.record.bankId)) : null);
   updateValidation();
   const restoredItems = hasTrialChanges(state.trial) ? '盤面、筆記、試填標記' : '盤面、筆記';
   setCoach(state.completed ? '已完成' : '繼續作答', state.completed ? '這題已完成，可以重做' : '已載入上次進度', state.completed ? '按「再練一次」會保留原歷程並建立新的作答。' : `${restoredItems}與 ${formatTime(state.elapsed)} 計時均已復原。`, '資料只保存在這個瀏覽器；清除網站資料或更換裝置後不會同步。');
@@ -1010,24 +1051,32 @@ byId('level-stage-tabs').addEventListener('click', (event) => {
   const button = event.target.closest('[data-level-stage]');
   if (!button) return;
   const stage = Number(button.dataset.levelStage);
-  const firstLevel = LEVELS.find((level) => level.stage === stage);
-  if (firstLevel) selectLevel(firstLevel.level);
+  const first = (stage - 1) * 60 + 1;
+  const last = first + 59;
+  const nextOpen = getNextChallengeNumber(state.learning.completedPuzzles);
+  const completedInStage = Array.from({ length: 60 }, (_, index) => first + index).filter((number) => state.learning.completedPuzzles.has(challengeIdFor(number)));
+  const target = nextOpen >= first && nextOpen <= last ? nextOpen : completedInStage.at(-1) || first;
+  selectChallenge(target);
 });
-byId('level-options').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-level]');
-  if (button) selectLevel(Number(button.dataset.level));
-});
-byId('level-question-options').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-level-question]');
+byId('challenge-map').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-challenge]');
   if (!button) return;
-  state.selectedQuestion = Number(button.dataset.levelQuestion);
-  renderLevelPicker();
+  selectChallenge(Number(button.dataset.challenge));
 });
 byId('bank-start-btn').addEventListener('click', () => {
-  const record = getLevelPuzzle(state.selectedLevel, state.selectedQuestion);
+  if (!isChallengeUnlocked(state.selectedChallenge, state.learning.completedPuzzles)) return;
+  const record = getChallenge(state.selectedChallenge);
   loadPuzzle(record, record.title);
   switchView('practice');
-  showToast(`已載入 ${record.id}：${record.blanks} 格空白，最難技巧為${record.techniqueLabel}。`, 'success');
+  showToast(`已載入第 ${record.challengeNumber} 關：${record.blanks} 格空白，最難技巧為${record.techniqueLabel}。`, 'success');
+});
+byId('next-challenge-btn').addEventListener('click', (event) => {
+  const challengeNumber = Number(event.currentTarget.dataset.challenge);
+  if (!isChallengeUnlocked(challengeNumber, state.learning.completedPuzzles)) return;
+  selectChallenge(challengeNumber);
+  const record = getChallenge(challengeNumber);
+  loadPuzzle(record, record.title);
+  showToast(`第 ${challengeNumber} 關已載入。`, 'success');
 });
 
 byId('undo-btn').addEventListener('click', undo);

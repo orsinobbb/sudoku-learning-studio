@@ -30,6 +30,47 @@ export const LEVELS = LEVEL_PUZZLE_BASES.map((base, index) => {
 });
 
 export const TOTAL_LEVEL_PUZZLES = LEVELS.reduce((total, level) => total + level.questionCount, 0);
+export const TOTAL_CHALLENGES = TOTAL_LEVEL_PUZZLES;
+
+export function challengeNumberFor(levelNumber, questionNumber) {
+  const level = Number(levelNumber);
+  const question = Number(questionNumber);
+  if (!Number.isInteger(level) || level < 1 || level > LEVELS.length) throw new Error(`級別必須介於 1–${LEVELS.length}。`);
+  if (!Number.isInteger(question) || question < 1 || question > 10) throw new Error('題號必須介於 1–10。');
+  return (level - 1) * 10 + question;
+}
+
+export function challengeIdFor(challengeNumber) {
+  const number = Number(challengeNumber);
+  if (!Number.isInteger(number) || number < 1 || number > TOTAL_CHALLENGES) throw new Error(`關卡必須介於 1–${TOTAL_CHALLENGES}。`);
+  const level = Math.ceil(number / 10);
+  const question = ((number - 1) % 10) + 1;
+  return `L${String(level).padStart(2, '0')}-Q${String(question).padStart(2, '0')}`;
+}
+
+export function challengeNumberFromId(id) {
+  const match = /^L(\d{2})-Q(\d{2})$/.exec(String(id || ''));
+  if (!match) return null;
+  const level = Number(match[1]);
+  const question = Number(match[2]);
+  if (level < 1 || level > LEVELS.length || question < 1 || question > 10) return null;
+  return challengeNumberFor(level, question);
+}
+
+export function getNextChallengeNumber(completedIds = []) {
+  const completed = completedIds instanceof Set ? completedIds : new Set(completedIds);
+  for (let number = 1; number <= TOTAL_CHALLENGES; number += 1) {
+    if (!completed.has(challengeIdFor(number))) return number;
+  }
+  return null;
+}
+
+export function isChallengeUnlocked(challengeNumber, completedIds = []) {
+  const number = Number(challengeNumber);
+  if (!Number.isInteger(number) || number < 1 || number > TOTAL_CHALLENGES) return false;
+  const completed = completedIds instanceof Set ? completedIds : new Set(completedIds);
+  return completed.has(challengeIdFor(number)) || number === getNextChallengeNumber(completed);
+}
 
 export function getLevel(levelNumber) {
   return LEVELS.find((level) => level.level === Number(levelNumber)) || null;
@@ -44,6 +85,7 @@ export function getLevelPuzzle(levelNumber, questionNumber) {
   const puzzle = parsePuzzle(level.puzzles[question - 1].puzzle);
   const solution = solveGrid(puzzle);
   if (!solution) throw new Error(`${id} 無解。`);
+  const challengeNumber = challengeNumberFor(level.level, question);
   return {
     id,
     bankId: id,
@@ -57,8 +99,15 @@ export function getLevelPuzzle(levelNumber, questionNumber) {
     level: level.level,
     stage: level.stage,
     question,
+    challengeNumber,
     focusTechnique: level.focusTechnique,
     techniqueLabel: level.techniqueLabel,
-    title: `Lv.${level.level} ${level.title} · 第 ${question} 題`
+    title: `第 ${challengeNumber} 關 · Lv.${level.level} ${level.title}`
   };
+}
+
+export function getChallenge(challengeNumber) {
+  const number = Number(challengeNumber);
+  if (!Number.isInteger(number) || number < 1 || number > TOTAL_CHALLENGES) throw new Error(`關卡必須介於 1–${TOTAL_CHALLENGES}。`);
+  return getLevelPuzzle(Math.ceil(number / 10), ((number - 1) % 10) + 1);
 }
