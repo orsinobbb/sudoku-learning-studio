@@ -37,12 +37,14 @@ import {
   TOTAL_CHALLENGES,
   challengeIdFor,
   challengeNumberFromId,
+  evaluateLevelQualification,
   getChallenge,
+  getLevelFastTrackSeconds,
   getLevelTimeLimitSeconds,
   getNextChallengeNumber,
   isLevelCheckpoint,
   isChallengeUnlocked
-} from './learning/level-catalog.js?v=20260826-ability1';
+} from './learning/level-catalog.js?v=20260826-ability2';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
@@ -169,17 +171,20 @@ function renderLevelPicker() {
   const checkpointId = challengeIdFor(checkpointNumber);
   const checkpointBest = Number(state.learning.challengeBestTimes[checkpointId] || 0);
   const targetSeconds = getLevelTimeLimitSeconds(selectedRecord.level);
+  const fastTrackSeconds = getLevelFastTrackSeconds(selectedRecord.level);
   const levelUnlocked = isChallengeUnlocked((selectedRecord.level - 1) * 10 + 1, completed, qualified);
   const abilityState = selectedLevelQualified ? '已達標' : !levelUnlocked ? '未開放' : completed.has(checkpointId) ? '待重考' : '進行中';
   const highestQualified = Array.from({ length: LEVELS.length }, (_, index) => index + 1).reduce((highest, level) => qualified.has(level) ? level : highest, 0);
   byId('bank-progress').textContent = `已破關 ${completedCount} / ${TOTAL_CHALLENGES}`;
   if (nextOpen && isLevelCheckpoint(nextOpen) && completed.has(challengeIdFor(nextOpen))) {
-    byId('challenge-status').textContent = `請重考第 ${nextOpen} 關，於 ${getLevelTimeLimitSeconds(nextOpen / 10) / 60} 分鐘內完成以解鎖下一級`;
+    byId('challenge-status').textContent = `可重考第 ${nextOpen} 關達標，或重玩本級任一關挑戰快速解鎖`;
   } else {
-    byId('challenge-status').textContent = nextOpen ? `目前可挑戰第 ${nextOpen} 關；每級第 10 關達標後解鎖下一級` : '300 關全部完成，所有關卡皆可重玩';
+    byId('challenge-status').textContent = nextOpen ? `循序進度第 ${nextOpen} 關 · 能力地圖已開放至 Lv.${Math.min(highestQualified + 1, LEVELS.length)}` : '300 關全部完成，所有關卡皆可重玩';
   }
   byId('challenge-progress-bar').style.width = `${(completedCount / TOTAL_CHALLENGES) * 100}%`;
-  byId('ability-waterline').innerHTML = `<span class="ability-badge">Lv.${selectedRecord.level}</span><div><b>能力水位：第 ${checkpointNumber} 關限時 ${targetSeconds / 60} 分鐘</b><p>最佳：${checkpointBest ? formatTime(checkpointBest) : '尚無紀錄'} · 已通過 ${qualified.size} / ${LEVELS.length} 級${highestQualified ? ` · 最高 Lv.${highestQualified}` : ''}</p></div><span class="ability-result">${abilityState}</span>`;
+  const qualification = state.learning.levelQualifications[selectedRecord.level];
+  const qualifiedBy = qualification?.route === 'fast-track' ? '超前解鎖' : qualification?.qualified ? '標準檢定' : '';
+  byId('ability-waterline').innerHTML = `<span class="ability-badge">Lv.${selectedRecord.level}</span><div><b>快速解鎖 ${formatTime(fastTrackSeconds)} · 標準檢定 ${formatTime(targetSeconds)}</b><p>任一關達快速水位即可跳級；第 ${checkpointNumber} 關適用標準水位。${qualifiedBy ? ` 已由「${qualifiedBy}」達標。` : ''}</p><small>檢定最佳：${checkpointBest ? formatTime(checkpointBest) : '尚無紀錄'} · 已通過 ${qualified.size} / ${LEVELS.length} 級${highestQualified ? ` · 最高 Lv.${highestQualified}` : ''}</small></div><span class="ability-result">${abilityState}</span>`;
   byId('level-stage-tabs').innerHTML = LEVEL_STAGES.map((stage) => {
     const first = (stage.number - 1) * 60 + 1;
     const done = Array.from({ length: 60 }, (_, index) => challengeIdFor(first + index)).filter((id) => completed.has(id)).length;
@@ -199,7 +204,7 @@ function renderLevelPicker() {
       return `<button type="button" aria-label="第 ${number} 關，${stateLabel}" class="challenge-node ${number === state.selectedChallenge ? 'selected' : ''} ${isComplete ? 'complete' : ''} ${isCurrent ? 'current' : ''} ${assessment ? 'assessment' : ''} ${levelQualified && assessment ? 'qualified' : ''} ${unlocked ? '' : 'locked'}" data-challenge="${number}" ${unlocked ? '' : 'disabled'}><span>${number}</span><small>${nodeMark}</small></button>`;
     }).join('');
     const done = Array.from({ length: 10 }, (_, index) => completed.has(challengeIdFor((level.level - 1) * 10 + index + 1))).filter(Boolean).length;
-    return `<section class="challenge-level"><header><div><b>Lv.${level.level} · ${level.techniqueLabel}</b><small>${level.blanks} 格空白 · ${done}/10 · ${qualified.has(level.level) ? '已達標' : `檢定 ${getLevelTimeLimitSeconds(level.level) / 60} 分`}</small></div></header><div class="challenge-nodes">${buttons}</div></section>`;
+    return `<section class="challenge-level"><header><div><b>Lv.${level.level} · ${level.techniqueLabel}</b><small>${level.blanks} 格空白 · ${done}/10 · ${qualified.has(level.level) ? '已達標' : `快速 ${formatTime(getLevelFastTrackSeconds(level.level))}／檢定 ${formatTime(getLevelTimeLimitSeconds(level.level))}`}</small></div></header><div class="challenge-nodes">${buttons}</div></section>`;
   }).join('');
   const selectedComplete = completed.has(selectedRecord.id);
   const assessment = isLevelCheckpoint(selectedRecord.challengeNumber);
@@ -209,13 +214,15 @@ function renderLevelPicker() {
       ? `本關已完成，但尚未在 ${targetSeconds / 60} 分鐘內達標；請重考以解鎖下一級。`
       : assessment && selectedUnlocked
         ? `這是本級能力檢定，須在 ${targetSeconds / 60} 分鐘內完成。`
-        : selectedComplete
-          ? '已過關，可隨時重玩。'
-          : selectedUnlocked
-            ? '目前已解鎖；依序完成後前往本級第 10 關檢定。'
-            : `請先完成目前開放的第 ${nextOpen} 關或能力檢定。`;
+        : selectedComplete && selectedLevelQualified
+          ? '本級已取得能力資格；可直接往下一級，也可重玩本關。'
+          : selectedComplete
+            ? '已過關，可隨時重玩或挑戰快速水位。'
+            : selectedUnlocked
+              ? `目前已解鎖；可循序練習，或在 ${formatTime(fastTrackSeconds)} 內完成任一關，直接開放下一級。`
+              : `請先完成目前開放的第 ${nextOpen} 關或能力檢定。`;
   const selectedState = selectedLevelQualified && assessment ? '檢定達標' : selectedComplete && assessment ? '待重考' : selectedComplete ? '已過關' : selectedUnlocked ? '可挑戰' : '未解鎖';
-  byId('level-summary').innerHTML = `<div class="challenge-summary-head"><span>第 ${selectedRecord.challengeNumber} / ${TOTAL_CHALLENGES} 關${assessment ? ' · 能力檢定' : ''}</span><b>${selectedState}</b></div><h3>第 ${selectedRecord.stage} 階 · Lv.${selectedRecord.level} ${selectedRecord.techniqueLabel}</h3><p>${statusCopy} ${LEVEL_STAGES[selectedRecord.stage - 1].description}</p><div class="level-metrics"><span>${selectedRecord.blanks} 格空白</span><span>${selectedRecord.clues} 個題目數字</span><span>最難技巧：${selectedRecord.techniqueLabel}</span><span>水位 ${targetSeconds / 60} 分鐘</span><span>檢定最佳 ${checkpointBest ? formatTime(checkpointBest) : '—'}</span><span>唯一解</span></div>`;
+  byId('level-summary').innerHTML = `<div class="challenge-summary-head"><span>第 ${selectedRecord.challengeNumber} / ${TOTAL_CHALLENGES} 關${assessment ? ' · 能力檢定' : ''}</span><b>${selectedState}</b></div><h3>第 ${selectedRecord.stage} 階 · Lv.${selectedRecord.level} ${selectedRecord.techniqueLabel}</h3><p>${statusCopy} ${LEVEL_STAGES[selectedRecord.stage - 1].description}</p><div class="level-metrics"><span>${selectedRecord.blanks} 格空白</span><span>${selectedRecord.clues} 個題目數字</span><span>最難技巧：${selectedRecord.techniqueLabel}</span><span>快速解鎖 ${formatTime(fastTrackSeconds)}</span><span>標準檢定 ${formatTime(targetSeconds)}</span><span>唯一解</span></div>`;
   byId('bank-start-btn').disabled = !selectedUnlocked;
   const startLabel = assessment && selectedComplete && !selectedLevelQualified ? '重考能力檢定' : selectedComplete ? '重新挑戰' : selectedUnlocked ? assessment ? '開始能力檢定' : '挑戰' : '尚未解鎖';
   byId('bank-start-btn').innerHTML = `${startLabel} · 第 ${selectedRecord.challengeNumber} 關 <span>→</span>`;
@@ -230,15 +237,20 @@ function selectChallenge(challengeNumber) {
   renderLevelPicker();
 }
 
-function updateNextChallengeButton(challengeNumber = null) {
+function updateNextChallengeButton(challengeNumber = null, preferredChallengeNumber = null) {
   const button = byId('next-challenge-btn');
   const qualified = qualifiedLevelsFrom(state.learning.levelQualifications);
-  const next = challengeNumber === null ? null : getNextChallengeNumber(state.learning.completedPuzzles, qualified);
+  const sequentialNext = challengeNumber === null ? null : getNextChallengeNumber(state.learning.completedPuzzles, qualified);
+  const preferredUnlocked = preferredChallengeNumber !== null && isChallengeUnlocked(preferredChallengeNumber, state.learning.completedPuzzles, qualified);
+  const next = preferredUnlocked ? preferredChallengeNumber : sequentialNext;
   const available = next !== null && isChallengeUnlocked(next, state.learning.completedPuzzles, qualified);
   button.hidden = !available;
   if (available) {
     button.dataset.challenge = String(next);
-    button.innerHTML = `${next === challengeNumber ? '重考能力檢定 · ' : '進入'}第 ${next} 關 <span>→</span>`;
+    const isFastTrackJump = preferredUnlocked && next > challengeNumber + 1;
+    button.innerHTML = isFastTrackJump
+      ? `超前前往 Lv.${Math.ceil(next / 10)} · 第 ${next} 關 <span>→</span>`
+      : `${next === challengeNumber ? '重考能力檢定 · ' : '進入'}第 ${next} 關 <span>→</span>`;
   } else {
     delete button.dataset.challenge;
   }
@@ -678,28 +690,29 @@ function completePuzzle() {
   const challengeNumber = state.record.challengeNumber || challengeNumberFromId(state.record.bankId);
   const firstClear = Boolean(state.record.bankId && !state.learning.completedPuzzles.has(state.record.bankId));
   if (state.record.bankId) state.learning.completedPuzzles.add(state.record.bankId);
-  let checkpointResult = null;
+  let abilityResult = null;
   if (challengeNumber && state.record.bankId) {
     const previousBest = Number(state.learning.challengeBestTimes[state.record.bankId] || 0);
     state.learning.challengeBestTimes[state.record.bankId] = previousBest ? Math.min(previousBest, state.elapsed) : state.elapsed;
-    if (isLevelCheckpoint(challengeNumber)) {
-      const level = state.record.level || Math.ceil(challengeNumber / 10);
-      const targetSeconds = getLevelTimeLimitSeconds(level);
-      const previousQualification = state.learning.levelQualifications[level];
-      const passedNow = state.elapsed <= targetSeconds;
-      if (passedNow) {
-        state.learning.levelQualifications[level] = {
+    const attempt = evaluateLevelQualification(challengeNumber, state.elapsed);
+    const previousQualification = state.learning.levelQualifications[attempt.level];
+    if (attempt.qualified) {
+      state.learning.levelQualifications[attempt.level] = {
+          ...previousQualification,
           qualified: true,
           bestSeconds: previousQualification?.bestSeconds ? Math.min(previousQualification.bestSeconds, state.elapsed) : state.elapsed,
-          targetSeconds,
-          challengeId: state.record.bankId,
+          targetSeconds: attempt.targetSeconds,
+          standardTargetSeconds: attempt.standardTargetSeconds,
+          fastTrackSeconds: attempt.fastTrackSeconds,
+          route: previousQualification?.route || attempt.route,
+          challengeId: previousQualification?.challengeId || state.record.bankId,
           qualifiedAt: previousQualification?.qualifiedAt || new Date().toISOString()
-        };
-      }
-      checkpointResult = {
-        level,
-        targetSeconds,
-        passedNow,
+      };
+    }
+    if (attempt.checkpoint || attempt.qualified) {
+      abilityResult = {
+        ...attempt,
+        passedNow: attempt.qualified,
         wasQualified: previousQualification?.qualified === true,
         bestSeconds: state.learning.challengeBestTimes[state.record.bankId]
       };
@@ -711,18 +724,21 @@ function completePuzzle() {
     setCoach('專項完成', `已通過「${strategyNames[state.activeDrill.technique]}」考題`, `你用 ${formatTime(state.elapsed)} 完成這題。`, '回想指定技巧出現時，候選數為何能被排除或確定。');
   } else {
     const label = state.record.bankId ? `${state.record.title}（${state.record.techniqueLabel}）` : `${state.record.difficultyLabel}題目`;
-    const assessmentNote = checkpointResult ? `，Lv.${checkpointResult.level} 能力檢定${checkpointResult.passedNow || checkpointResult.wasQualified ? '達標' : '未達標'}` : '';
+    const assessmentNote = abilityResult ? `，Lv.${abilityResult.level} ${abilityResult.route === 'fast-track' ? '超前解鎖' : '能力檢定'}${abilityResult.passedNow || abilityResult.wasQualified ? '達標' : '未達標'}` : '';
     recordActivity('puzzle', `完成「${label}」，用時 ${formatTime(state.elapsed)}${assessmentNote}`);
-    if (checkpointResult) {
-      const nextLevel = checkpointResult.level < LEVELS.length ? checkpointResult.level + 1 : null;
-      if (checkpointResult.passedNow) {
+    if (abilityResult) {
+      const nextLevel = abilityResult.level < LEVELS.length ? abilityResult.level + 1 : null;
+      if (abilityResult.passedNow && abilityResult.route === 'fast-track') {
+        const title = nextLevel ? `表現遠超水位，Lv.${nextLevel} 已開放！` : '最高級超前水位達成！';
+        setCoach(`Lv.${abilityResult.level} 超前解鎖`, title, `你用 ${formatTime(state.elapsed)} 完成，達到任一關 ${formatTime(abilityResult.fastTrackSeconds)} 內的快速水位。${nextLevel ? ` 可直接跳到第 ${abilityResult.level * 10 + 1} 關，也可回來完成本級其餘題目。` : ''}`, '跳級只增加選擇，不會刪除或代替原本的練習題。');
+      } else if (abilityResult.passedNow) {
         const title = nextLevel ? `Lv.${nextLevel} 已解鎖！` : '最高級能力水位達成！';
-        setCoach(`Lv.${checkpointResult.level} 能力檢定通過`, title, `完成時間 ${formatTime(state.elapsed)}，達到 ${formatTime(checkpointResult.targetSeconds)} 的能力水位。${nextLevel ? ` 現在可挑戰 Lv.${nextLevel}。` : ''}`, '速度來自穩定的觀察順序；重玩仍會保留更快的最佳成績。');
-      } else if (checkpointResult.wasQualified) {
-        setCoach(`Lv.${checkpointResult.level} 檢定重玩完成`, '已保有達標資格', `本次 ${formatTime(state.elapsed)}；你的達標紀錄不會被取消，最佳時間為 ${formatTime(checkpointResult.bestSeconds)}。`, '可繼續下一級，也可以再次挑戰刷新最佳時間。');
+        setCoach(`Lv.${abilityResult.level} 能力檢定通過`, title, `完成時間 ${formatTime(state.elapsed)}，達到 ${formatTime(abilityResult.targetSeconds)} 的標準水位。${nextLevel ? ` 現在可挑戰 Lv.${nextLevel}。` : ''}`, '速度來自穩定的觀察順序；重玩仍會保留更快的最佳成績。');
+      } else if (abilityResult.wasQualified) {
+        setCoach(`Lv.${abilityResult.level} 檢定重玩完成`, '已保有達標資格', `本次 ${formatTime(state.elapsed)}；你的達標紀錄不會被取消，最佳時間為 ${formatTime(abilityResult.bestSeconds)}。`, '可繼續下一級，也可以再次挑戰刷新最佳時間。');
       } else {
-        const overtime = state.elapsed - checkpointResult.targetSeconds;
-        setCoach(`Lv.${checkpointResult.level} 檢定完成`, '尚未達到能力水位', `本次 ${formatTime(state.elapsed)}，目標為 ${formatTime(checkpointResult.targetSeconds)}，超出 ${formatTime(overtime)}。本關已算完成，但下一級需重考達標後才會解鎖。`, '先檢查卡住最久的盤面階段，再重考同一關；系統會保留最佳時間。');
+        const overtime = state.elapsed - abilityResult.targetSeconds;
+        setCoach(`Lv.${abilityResult.level} 檢定完成`, '尚未達到標準水位', `本次 ${formatTime(state.elapsed)}，目標為 ${formatTime(abilityResult.targetSeconds)}，超出 ${formatTime(overtime)}。仍可重考第 10 關，或重玩本級任一關挑戰 ${formatTime(abilityResult.fastTrackSeconds)} 快速水位。`, '能力門檻有兩條路；選擇比較適合你的節奏即可。');
       }
     } else if (challengeNumber) {
       const next = getNextChallengeNumber(state.learning.completedPuzzles, qualifiedLevelsFrom(state.learning.levelQualifications));
@@ -732,11 +748,16 @@ function completePuzzle() {
     }
   }
   renderLevelPicker();
-  updateNextChallengeButton(challengeNumber);
-  const toastMessage = checkpointResult && !checkpointResult.passedNow && !checkpointResult.wasQualified
-    ? `第 ${challengeNumber} 關已完成；請重考達到時間水位以解鎖下一級。`
-    : checkpointResult?.passedNow
-      ? `Lv.${checkpointResult.level} 能力檢定通過！`
+  const fastTrackTarget = abilityResult?.passedNow && abilityResult.route === 'fast-track' && abilityResult.level < LEVELS.length
+    ? abilityResult.level * 10 + 1
+    : null;
+  updateNextChallengeButton(challengeNumber, fastTrackTarget);
+  const toastMessage = abilityResult && !abilityResult.passedNow && !abilityResult.wasQualified
+    ? `第 ${challengeNumber} 關已完成；可重考檢定或挑戰任一關快速水位。`
+    : abilityResult?.passedNow && abilityResult.route === 'fast-track'
+      ? abilityResult.level < LEVELS.length ? `表現遠超水位！Lv.${abilityResult.level + 1} 已提前開放。` : '最高級超前能力水位達成！'
+      : abilityResult?.passedNow
+        ? `Lv.${abilityResult.level} 能力檢定通過！`
       : challengeNumber
         ? `第 ${challengeNumber} 關破關！進度已保存在這個裝置。`
         : '恭喜完成！學習紀錄已保存在這個裝置。';

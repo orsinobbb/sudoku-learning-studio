@@ -38,7 +38,9 @@ import {
   challengeIdFor,
   challengeNumberFor,
   challengeNumberFromId,
+  evaluateLevelQualification,
   getChallenge,
+  getLevelFastTrackSeconds,
   getLevelPuzzle,
   getLevelTimeLimitSeconds,
   getNextChallengeNumber,
@@ -475,13 +477,27 @@ test('five-stage curriculum contains 30 ordered levels and 300 verified puzzles'
   assert.equal(puzzleGrids.size, 300);
 });
 
-test('300-stage challenge maps every puzzle once and gates each level with a timed checkpoint', () => {
+test('300-stage challenge supports both sequential progress and performance-based fast unlocks', () => {
   assert.equal(TOTAL_CHALLENGES, 300);
   assert.equal(LEVEL_TIME_LIMITS_MINUTES.length, 30);
   assert.deepEqual(LEVEL_TIME_LIMITS_MINUTES.slice(0, 3), [6, 7, 8]);
   assert.deepEqual(LEVEL_TIME_LIMITS_MINUTES.slice(-3), [36, 38, 40]);
   assert.equal(getLevelTimeLimitSeconds(1), 360);
   assert.equal(getLevelTimeLimitSeconds(30), 2400);
+  assert.equal(getLevelFastTrackSeconds(1), 180);
+  assert.equal(getLevelFastTrackSeconds(2), 210);
+  assert.deepEqual(evaluateLevelQualification(1, 180), {
+    level: 1,
+    checkpoint: false,
+    route: 'fast-track',
+    qualified: true,
+    targetSeconds: 180,
+    standardTargetSeconds: 360,
+    fastTrackSeconds: 180
+  });
+  assert.equal(evaluateLevelQualification(1, 181).qualified, false);
+  assert.equal(evaluateLevelQualification(10, 360).qualified, true);
+  assert.equal(evaluateLevelQualification(10, 361).qualified, false);
   assert.equal(isLevelCheckpoint(10), true);
   assert.equal(isLevelCheckpoint(11), false);
   for (let number = 1; number <= TOTAL_CHALLENGES; number += 1) {
@@ -502,6 +518,10 @@ test('300-stage challenge maps every puzzle once and gates each level with a tim
   assert.equal(isChallengeUnlocked(1, completed, qualified), true);
   assert.equal(isChallengeUnlocked(2, completed, qualified), true);
   assert.equal(isChallengeUnlocked(3, completed, qualified), false);
+  const fastQualified = new Set([1]);
+  assert.equal(getNextChallengeNumber(completed, fastQualified), 2);
+  assert.equal(isChallengeUnlocked(11, completed, fastQualified), true);
+  assert.equal(isChallengeUnlocked(12, completed, fastQualified), false);
   for (let number = 2; number <= 10; number += 1) completed.add(challengeIdFor(number));
   assert.equal(getNextChallengeNumber(completed, qualified), 10);
   assert.equal(isChallengeUnlocked(10, completed, qualified), true);

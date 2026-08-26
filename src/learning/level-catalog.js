@@ -32,7 +32,7 @@ export const LEVELS = LEVEL_PUZZLE_BASES.map((base, index) => {
 export const TOTAL_LEVEL_PUZZLES = LEVELS.reduce((total, level) => total + level.questionCount, 0);
 export const TOTAL_CHALLENGES = TOTAL_LEVEL_PUZZLES;
 
-// 每級第 10 關是能力檢定。前 25 級每級增加 1 分鐘，最後 5 級因高階鏈與搜尋驗證增加 2 分鐘。
+// 每級第 10 關是標準能力檢定；任何一關若在一半時間內完成，可提前證明能力並解鎖下一級。
 export const LEVEL_TIME_LIMITS_MINUTES = Object.freeze([
   6, 7, 8, 9, 10, 11,
   12, 13, 14, 15, 16, 17,
@@ -72,9 +72,34 @@ export function getLevelTimeLimitSeconds(levelNumber) {
   return LEVEL_TIME_LIMITS_MINUTES[level - 1] * 60;
 }
 
+export function getLevelFastTrackSeconds(levelNumber) {
+  return Math.floor(getLevelTimeLimitSeconds(levelNumber) / 2);
+}
+
 export function isLevelCheckpoint(challengeNumber) {
   const number = Number(challengeNumber);
   return Number.isInteger(number) && number >= 1 && number <= TOTAL_CHALLENGES && number % 10 === 0;
+}
+
+export function evaluateLevelQualification(challengeNumber, elapsedSeconds) {
+  const number = Number(challengeNumber);
+  const elapsed = Number(elapsedSeconds);
+  if (!Number.isInteger(number) || number < 1 || number > TOTAL_CHALLENGES) throw new Error(`關卡必須介於 1–${TOTAL_CHALLENGES}。`);
+  if (!Number.isFinite(elapsed) || elapsed < 0) throw new Error('完成時間必須是非負秒數。');
+  const level = Math.ceil(number / 10);
+  const checkpoint = isLevelCheckpoint(number);
+  const standardTargetSeconds = getLevelTimeLimitSeconds(level);
+  const fastTrackSeconds = getLevelFastTrackSeconds(level);
+  const targetSeconds = checkpoint ? standardTargetSeconds : fastTrackSeconds;
+  return {
+    level,
+    checkpoint,
+    route: checkpoint ? 'checkpoint' : 'fast-track',
+    qualified: elapsed <= targetSeconds,
+    targetSeconds,
+    standardTargetSeconds,
+    fastTrackSeconds
+  };
 }
 
 function normalizeQualifiedLevels(qualifiedLevels) {
