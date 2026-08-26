@@ -16,12 +16,14 @@ export function readProgress(storage = localStorage) {
     totalActivities: Number(raw.totalActivities || raw.activities?.length || 0),
     hintsUsed: Number(raw.hintsUsed || 0),
     analysesRun: Number(raw.analysesRun || 0),
-    lessonResults: raw.lessonResults && typeof raw.lessonResults === 'object' ? raw.lessonResults : {}
+    lessonResults: raw.lessonResults && typeof raw.lessonResults === 'object' ? raw.lessonResults : {},
+    levelQualifications: raw.levelQualifications && typeof raw.levelQualifications === 'object' ? raw.levelQualifications : {},
+    challengeBestTimes: raw.challengeBestTimes && typeof raw.challengeBestTimes === 'object' ? raw.challengeBestTimes : {}
   };
 }
 
 export function writeProgress(progress, storage = localStorage) {
-  storage.setItem(PROGRESS_KEY, JSON.stringify({ version: 5, ...progress, updatedAt: new Date().toISOString() }));
+  storage.setItem(PROGRESS_KEY, JSON.stringify({ version: 6, ...progress, updatedAt: new Date().toISOString() }));
 }
 
 export function readSession(storage = localStorage) {

@@ -32,6 +32,15 @@ export const LEVELS = LEVEL_PUZZLE_BASES.map((base, index) => {
 export const TOTAL_LEVEL_PUZZLES = LEVELS.reduce((total, level) => total + level.questionCount, 0);
 export const TOTAL_CHALLENGES = TOTAL_LEVEL_PUZZLES;
 
+// 每級第 10 關是能力檢定。前 25 級每級增加 1 分鐘，最後 5 級因高階鏈與搜尋驗證增加 2 分鐘。
+export const LEVEL_TIME_LIMITS_MINUTES = Object.freeze([
+  6, 7, 8, 9, 10, 11,
+  12, 13, 14, 15, 16, 17,
+  18, 19, 20, 21, 22, 23,
+  24, 25, 26, 27, 28, 29,
+  30, 32, 34, 36, 38, 40
+]);
+
 export function challengeNumberFor(levelNumber, questionNumber) {
   const level = Number(levelNumber);
   const question = Number(questionNumber);
@@ -57,19 +66,55 @@ export function challengeNumberFromId(id) {
   return challengeNumberFor(level, question);
 }
 
-export function getNextChallengeNumber(completedIds = []) {
+export function getLevelTimeLimitSeconds(levelNumber) {
+  const level = Number(levelNumber);
+  if (!Number.isInteger(level) || level < 1 || level > LEVELS.length) throw new Error(`級別必須介於 1–${LEVELS.length}。`);
+  return LEVEL_TIME_LIMITS_MINUTES[level - 1] * 60;
+}
+
+export function isLevelCheckpoint(challengeNumber) {
+  const number = Number(challengeNumber);
+  return Number.isInteger(number) && number >= 1 && number <= TOTAL_CHALLENGES && number % 10 === 0;
+}
+
+function normalizeQualifiedLevels(qualifiedLevels) {
+  if (qualifiedLevels instanceof Set) return qualifiedLevels;
+  if (Array.isArray(qualifiedLevels)) return new Set(qualifiedLevels.map(Number));
+  if (qualifiedLevels && typeof qualifiedLevels === 'object') {
+    return new Set(Object.entries(qualifiedLevels)
+      .filter(([, result]) => result?.qualified === true)
+      .map(([level]) => Number(level)));
+  }
+  return new Set();
+}
+
+export function getNextChallengeNumber(completedIds = [], qualifiedLevels = []) {
   const completed = completedIds instanceof Set ? completedIds : new Set(completedIds);
-  for (let number = 1; number <= TOTAL_CHALLENGES; number += 1) {
-    if (!completed.has(challengeIdFor(number))) return number;
+  const qualified = normalizeQualifiedLevels(qualifiedLevels);
+  for (let level = 1; level <= LEVELS.length; level += 1) {
+    const first = challengeNumberFor(level, 1);
+    const checkpoint = challengeNumberFor(level, 10);
+    for (let number = first; number <= checkpoint; number += 1) {
+      if (!completed.has(challengeIdFor(number))) return number;
+    }
+    if (level < LEVELS.length && !qualified.has(level)) return checkpoint;
   }
   return null;
 }
 
-export function isChallengeUnlocked(challengeNumber, completedIds = []) {
+export function isChallengeUnlocked(challengeNumber, completedIds = [], qualifiedLevels = []) {
   const number = Number(challengeNumber);
   if (!Number.isInteger(number) || number < 1 || number > TOTAL_CHALLENGES) return false;
   const completed = completedIds instanceof Set ? completedIds : new Set(completedIds);
-  return completed.has(challengeIdFor(number)) || number === getNextChallengeNumber(completed);
+  if (completed.has(challengeIdFor(number))) return true;
+  const qualified = normalizeQualifiedLevels(qualifiedLevels);
+  const level = Math.ceil(number / 10);
+  if (level > 1 && !qualified.has(level - 1)) return false;
+  const first = challengeNumberFor(level, 1);
+  for (let previous = first; previous < number; previous += 1) {
+    if (!completed.has(challengeIdFor(previous))) return false;
+  }
+  return true;
 }
 
 export function getLevel(levelNumber) {

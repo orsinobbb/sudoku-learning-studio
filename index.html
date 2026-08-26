@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#16372f">
   <meta name="description" content="從候選數到進階策略，會解釋每一步的數獨學習網站。">
   <title>數織學堂｜Sudoku Learning Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20260825-challenge1">
+  <link rel="stylesheet" href="./styles.css?v=20260826-ability1">
 </head>
 <body>
   <div class="page-shell">
@@ -91,10 +91,11 @@
       </section>
 
       <section id="generator-view" class="view tool-view">
-        <div class="tool-copy"><p class="eyebrow">300-STAGE CHALLENGE</p><h1>破關挑戰 300 關，<br>一步一步練上去。</h1><p>五階、三十級、共 300 關。依序破關解鎖；已過關可重玩，每關都標示空格數與實際求解技巧。</p></div>
+        <div class="tool-copy"><p class="eyebrow">300-STAGE CHALLENGE</p><h1>破關挑戰 300 關，<br>一步一步練上去。</h1><p>五階、三十級、共 300 關。每級第 10 關是限時能力檢定；達到該級時間水位，才會解鎖下一級。</p></div>
         <div class="tool-card generator-card">
           <div class="level-bank-heading"><div><span>300 關破關地圖</span><b id="bank-progress">已破關 0 / 300</b></div><small id="challenge-status">從第 1 關開始，逐關解鎖</small></div>
           <div class="challenge-progress" aria-hidden="true"><i id="challenge-progress-bar"></i></div>
+          <section id="ability-waterline" class="ability-waterline" aria-live="polite"></section>
           <div id="level-stage-tabs" class="level-stage-tabs" role="tablist" aria-label="選擇挑戰階段"></div>
           <div id="challenge-map" class="challenge-map" aria-label="關卡地圖"></div>
           <section id="level-summary" class="level-summary" aria-live="polite"></section>
@@ -164,6 +165,6 @@
     <footer><span>數織學堂 · 在本機思考，在每一步學習</span><span>無廣告 · 無登入 · 資料不離開裝置</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./src/app.js?v=20260825-challenge1"></script>
+  <script type="module" src="./src/app.js?v=20260826-ability1"></script>
 </body>
 </html>

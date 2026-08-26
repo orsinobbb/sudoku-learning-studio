@@ -30,7 +30,7 @@ import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECH
 import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-advanced1';
 import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-advanced1';
 import { getTutorial } from './learning/tutorials.js?v=20260824-advanced1';
-import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260825-levels2';
+import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260826-ability1';
 import {
   LEVELS,
   LEVEL_STAGES,
@@ -38,9 +38,11 @@ import {
   challengeIdFor,
   challengeNumberFromId,
   getChallenge,
+  getLevelTimeLimitSeconds,
   getNextChallengeNumber,
+  isLevelCheckpoint,
   isChallengeUnlocked
-} from './learning/level-catalog.js?v=20260825-challenge1';
+} from './learning/level-catalog.js?v=20260826-ability1';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
@@ -52,6 +54,12 @@ const assessmentTechnique = (lesson) => lesson.assessment || (lesson.analyzer !=
 const storedProgress = readProgress();
 const pendingSession = readSession();
 
+function qualifiedLevelsFrom(records = {}) {
+  return new Set(Object.entries(records)
+    .filter(([, result]) => result?.qualified === true)
+    .map(([level]) => Number(level)));
+}
+
 const learningProfile = {
   completedLessons: new Set(Array.isArray(storedProgress.completedLessons) ? storedProgress.completedLessons : []),
   completedDrills: new Set(Array.isArray(storedProgress.completedDrills) ? storedProgress.completedDrills : []),
@@ -60,9 +68,11 @@ const learningProfile = {
   totalActivities: Number(storedProgress.totalActivities || storedProgress.activities?.length || 0),
   hintsUsed: Number(storedProgress.hintsUsed || 0),
   analysesRun: Number(storedProgress.analysesRun || 0),
-  lessonResults: storedProgress.lessonResults
+  lessonResults: storedProgress.lessonResults,
+  levelQualifications: storedProgress.levelQualifications,
+  challengeBestTimes: storedProgress.challengeBestTimes
 };
-const initialChallengeNumber = getNextChallengeNumber(learningProfile.completedPuzzles) || TOTAL_CHALLENGES;
+const initialChallengeNumber = getNextChallengeNumber(learningProfile.completedPuzzles, qualifiedLevelsFrom(learningProfile.levelQualifications)) || TOTAL_CHALLENGES;
 const initialChallenge = getChallenge(initialChallengeNumber);
 
 const state = {
@@ -103,7 +113,9 @@ function persistProgress() {
     totalActivities: state.learning.totalActivities,
     hintsUsed: state.learning.hintsUsed,
     analysesRun: state.learning.analysesRun,
-    lessonResults: state.learning.lessonResults
+    lessonResults: state.learning.lessonResults,
+    levelQualifications: state.learning.levelQualifications,
+    challengeBestTimes: state.learning.challengeBestTimes
   });
 }
 
@@ -147,13 +159,27 @@ function randomSeed() {
 
 function renderLevelPicker() {
   const completed = state.learning.completedPuzzles;
+  const qualified = qualifiedLevelsFrom(state.learning.levelQualifications);
   const completedCount = [...completed].filter((id) => challengeNumberFromId(id)).length;
-  const nextOpen = getNextChallengeNumber(completed);
+  const nextOpen = getNextChallengeNumber(completed, qualified);
   const selectedRecord = getChallenge(state.selectedChallenge);
-  const selectedUnlocked = isChallengeUnlocked(state.selectedChallenge, completed);
+  const selectedUnlocked = isChallengeUnlocked(state.selectedChallenge, completed, qualified);
+  const selectedLevelQualified = qualified.has(selectedRecord.level);
+  const checkpointNumber = selectedRecord.level * 10;
+  const checkpointId = challengeIdFor(checkpointNumber);
+  const checkpointBest = Number(state.learning.challengeBestTimes[checkpointId] || 0);
+  const targetSeconds = getLevelTimeLimitSeconds(selectedRecord.level);
+  const levelUnlocked = isChallengeUnlocked((selectedRecord.level - 1) * 10 + 1, completed, qualified);
+  const abilityState = selectedLevelQualified ? '已達標' : !levelUnlocked ? '未開放' : completed.has(checkpointId) ? '待重考' : '進行中';
+  const highestQualified = Array.from({ length: LEVELS.length }, (_, index) => index + 1).reduce((highest, level) => qualified.has(level) ? level : highest, 0);
   byId('bank-progress').textContent = `已破關 ${completedCount} / ${TOTAL_CHALLENGES}`;
-  byId('challenge-status').textContent = nextOpen ? `目前可挑戰第 ${nextOpen} 關；完成後解鎖下一關` : '300 關全部完成，所有關卡皆可重玩';
+  if (nextOpen && isLevelCheckpoint(nextOpen) && completed.has(challengeIdFor(nextOpen))) {
+    byId('challenge-status').textContent = `請重考第 ${nextOpen} 關，於 ${getLevelTimeLimitSeconds(nextOpen / 10) / 60} 分鐘內完成以解鎖下一級`;
+  } else {
+    byId('challenge-status').textContent = nextOpen ? `目前可挑戰第 ${nextOpen} 關；每級第 10 關達標後解鎖下一級` : '300 關全部完成，所有關卡皆可重玩';
+  }
   byId('challenge-progress-bar').style.width = `${(completedCount / TOTAL_CHALLENGES) * 100}%`;
+  byId('ability-waterline').innerHTML = `<span class="ability-badge">Lv.${selectedRecord.level}</span><div><b>能力水位：第 ${checkpointNumber} 關限時 ${targetSeconds / 60} 分鐘</b><p>最佳：${checkpointBest ? formatTime(checkpointBest) : '尚無紀錄'} · 已通過 ${qualified.size} / ${LEVELS.length} 級${highestQualified ? ` · 最高 Lv.${highestQualified}` : ''}</p></div><span class="ability-result">${abilityState}</span>`;
   byId('level-stage-tabs').innerHTML = LEVEL_STAGES.map((stage) => {
     const first = (stage.number - 1) * 60 + 1;
     const done = Array.from({ length: 60 }, (_, index) => challengeIdFor(first + index)).filter((id) => completed.has(id)).length;
@@ -165,18 +191,34 @@ function renderLevelPicker() {
       const id = challengeIdFor(number);
       const isComplete = completed.has(id);
       const isCurrent = number === nextOpen;
-      const unlocked = isChallengeUnlocked(number, completed);
-      const stateLabel = isComplete ? '已過關' : isCurrent ? '目前關卡' : '尚未解鎖';
-      return `<button type="button" aria-label="第 ${number} 關，${stateLabel}" class="challenge-node ${number === state.selectedChallenge ? 'selected' : ''} ${isComplete ? 'complete' : ''} ${isCurrent ? 'current' : ''} ${unlocked ? '' : 'locked'}" data-challenge="${number}" ${unlocked ? '' : 'disabled'}><span>${number}</span><small>${isComplete ? '✓' : isCurrent ? 'GO' : '鎖'}</small></button>`;
+      const assessment = isLevelCheckpoint(number);
+      const levelQualified = qualified.has(level.level);
+      const unlocked = isChallengeUnlocked(number, completed, qualified);
+      const stateLabel = assessment && levelQualified ? '能力檢定已達標' : assessment && isComplete ? '已過關，能力檢定待重考' : isComplete ? '已過關' : isCurrent ? assessment ? '目前能力檢定' : '目前關卡' : '尚未解鎖';
+      const nodeMark = assessment ? levelQualified ? '★' : isCurrent && isComplete ? '重考' : '檢' : isComplete ? '✓' : isCurrent ? 'GO' : '鎖';
+      return `<button type="button" aria-label="第 ${number} 關，${stateLabel}" class="challenge-node ${number === state.selectedChallenge ? 'selected' : ''} ${isComplete ? 'complete' : ''} ${isCurrent ? 'current' : ''} ${assessment ? 'assessment' : ''} ${levelQualified && assessment ? 'qualified' : ''} ${unlocked ? '' : 'locked'}" data-challenge="${number}" ${unlocked ? '' : 'disabled'}><span>${number}</span><small>${nodeMark}</small></button>`;
     }).join('');
     const done = Array.from({ length: 10 }, (_, index) => completed.has(challengeIdFor((level.level - 1) * 10 + index + 1))).filter(Boolean).length;
-    return `<section class="challenge-level"><header><div><b>Lv.${level.level} · ${level.techniqueLabel}</b><small>${level.blanks} 格空白 · ${done}/10</small></div></header><div class="challenge-nodes">${buttons}</div></section>`;
+    return `<section class="challenge-level"><header><div><b>Lv.${level.level} · ${level.techniqueLabel}</b><small>${level.blanks} 格空白 · ${done}/10 · ${qualified.has(level.level) ? '已達標' : `檢定 ${getLevelTimeLimitSeconds(level.level) / 60} 分`}</small></div></header><div class="challenge-nodes">${buttons}</div></section>`;
   }).join('');
   const selectedComplete = completed.has(selectedRecord.id);
-  const statusCopy = selectedComplete ? '已過關，可隨時重玩。' : selectedUnlocked ? '目前已解鎖；破關後會開放下一關。' : `請先完成第 ${nextOpen} 關。`;
-  byId('level-summary').innerHTML = `<div class="challenge-summary-head"><span>第 ${selectedRecord.challengeNumber} / ${TOTAL_CHALLENGES} 關</span><b>${selectedComplete ? '已過關' : selectedUnlocked ? '可挑戰' : '未解鎖'}</b></div><h3>第 ${selectedRecord.stage} 階 · Lv.${selectedRecord.level} ${selectedRecord.techniqueLabel}</h3><p>${statusCopy} ${LEVEL_STAGES[selectedRecord.stage - 1].description}</p><div class="level-metrics"><span>${selectedRecord.blanks} 格空白</span><span>${selectedRecord.clues} 個題目數字</span><span>最難技巧：${selectedRecord.techniqueLabel}</span><span>唯一解</span></div>`;
+  const assessment = isLevelCheckpoint(selectedRecord.challengeNumber);
+  const statusCopy = assessment && selectedLevelQualified
+    ? '能力檢定已達標，下一級已開放；本關仍可重玩刷新最佳時間。'
+    : assessment && selectedComplete
+      ? `本關已完成，但尚未在 ${targetSeconds / 60} 分鐘內達標；請重考以解鎖下一級。`
+      : assessment && selectedUnlocked
+        ? `這是本級能力檢定，須在 ${targetSeconds / 60} 分鐘內完成。`
+        : selectedComplete
+          ? '已過關，可隨時重玩。'
+          : selectedUnlocked
+            ? '目前已解鎖；依序完成後前往本級第 10 關檢定。'
+            : `請先完成目前開放的第 ${nextOpen} 關或能力檢定。`;
+  const selectedState = selectedLevelQualified && assessment ? '檢定達標' : selectedComplete && assessment ? '待重考' : selectedComplete ? '已過關' : selectedUnlocked ? '可挑戰' : '未解鎖';
+  byId('level-summary').innerHTML = `<div class="challenge-summary-head"><span>第 ${selectedRecord.challengeNumber} / ${TOTAL_CHALLENGES} 關${assessment ? ' · 能力檢定' : ''}</span><b>${selectedState}</b></div><h3>第 ${selectedRecord.stage} 階 · Lv.${selectedRecord.level} ${selectedRecord.techniqueLabel}</h3><p>${statusCopy} ${LEVEL_STAGES[selectedRecord.stage - 1].description}</p><div class="level-metrics"><span>${selectedRecord.blanks} 格空白</span><span>${selectedRecord.clues} 個題目數字</span><span>最難技巧：${selectedRecord.techniqueLabel}</span><span>水位 ${targetSeconds / 60} 分鐘</span><span>檢定最佳 ${checkpointBest ? formatTime(checkpointBest) : '—'}</span><span>唯一解</span></div>`;
   byId('bank-start-btn').disabled = !selectedUnlocked;
-  byId('bank-start-btn').innerHTML = `${selectedComplete ? '重新挑戰' : selectedUnlocked ? '挑戰' : '尚未解鎖'}第 ${selectedRecord.challengeNumber} 關 <span>→</span>`;
+  const startLabel = assessment && selectedComplete && !selectedLevelQualified ? '重考能力檢定' : selectedComplete ? '重新挑戰' : selectedUnlocked ? assessment ? '開始能力檢定' : '挑戰' : '尚未解鎖';
+  byId('bank-start-btn').innerHTML = `${startLabel} · 第 ${selectedRecord.challengeNumber} 關 <span>→</span>`;
 }
 
 function selectChallenge(challengeNumber) {
@@ -190,12 +232,13 @@ function selectChallenge(challengeNumber) {
 
 function updateNextChallengeButton(challengeNumber = null) {
   const button = byId('next-challenge-btn');
-  const next = Number(challengeNumber) + 1;
-  const available = challengeNumber !== null && Number.isInteger(next) && next <= TOTAL_CHALLENGES && isChallengeUnlocked(next, state.learning.completedPuzzles);
+  const qualified = qualifiedLevelsFrom(state.learning.levelQualifications);
+  const next = challengeNumber === null ? null : getNextChallengeNumber(state.learning.completedPuzzles, qualified);
+  const available = next !== null && isChallengeUnlocked(next, state.learning.completedPuzzles, qualified);
   button.hidden = !available;
   if (available) {
     button.dataset.challenge = String(next);
-    button.innerHTML = `進入第 ${next} 關 <span>→</span>`;
+    button.innerHTML = `${next === challengeNumber ? '重考能力檢定 · ' : '進入'}第 ${next} 關 <span>→</span>`;
   } else {
     delete button.dataset.challenge;
   }
@@ -635,23 +678,69 @@ function completePuzzle() {
   const challengeNumber = state.record.challengeNumber || challengeNumberFromId(state.record.bankId);
   const firstClear = Boolean(state.record.bankId && !state.learning.completedPuzzles.has(state.record.bankId));
   if (state.record.bankId) state.learning.completedPuzzles.add(state.record.bankId);
+  let checkpointResult = null;
+  if (challengeNumber && state.record.bankId) {
+    const previousBest = Number(state.learning.challengeBestTimes[state.record.bankId] || 0);
+    state.learning.challengeBestTimes[state.record.bankId] = previousBest ? Math.min(previousBest, state.elapsed) : state.elapsed;
+    if (isLevelCheckpoint(challengeNumber)) {
+      const level = state.record.level || Math.ceil(challengeNumber / 10);
+      const targetSeconds = getLevelTimeLimitSeconds(level);
+      const previousQualification = state.learning.levelQualifications[level];
+      const passedNow = state.elapsed <= targetSeconds;
+      if (passedNow) {
+        state.learning.levelQualifications[level] = {
+          qualified: true,
+          bestSeconds: previousQualification?.bestSeconds ? Math.min(previousQualification.bestSeconds, state.elapsed) : state.elapsed,
+          targetSeconds,
+          challengeId: state.record.bankId,
+          qualifiedAt: previousQualification?.qualifiedAt || new Date().toISOString()
+        };
+      }
+      checkpointResult = {
+        level,
+        targetSeconds,
+        passedNow,
+        wasQualified: previousQualification?.qualified === true,
+        bestSeconds: state.learning.challengeBestTimes[state.record.bankId]
+      };
+    }
+  }
   if (state.activeDrill) {
     state.learning.completedDrills.add(state.activeDrill.technique);
     recordActivity('drill', `通過「${strategyNames[state.activeDrill.technique]}」專項考題，用時 ${formatTime(state.elapsed)}`);
     setCoach('專項完成', `已通過「${strategyNames[state.activeDrill.technique]}」考題`, `你用 ${formatTime(state.elapsed)} 完成這題。`, '回想指定技巧出現時，候選數為何能被排除或確定。');
   } else {
     const label = state.record.bankId ? `${state.record.title}（${state.record.techniqueLabel}）` : `${state.record.difficultyLabel}題目`;
-    recordActivity('puzzle', `完成「${label}」，用時 ${formatTime(state.elapsed)}`);
-    if (challengeNumber) {
-      const next = challengeNumber < TOTAL_CHALLENGES ? challengeNumber + 1 : null;
-      setCoach(`第 ${challengeNumber} 關破關`, firstClear ? '新關卡已解鎖！' : '重玩完成！', `你用 ${formatTime(state.elapsed)} 完成這題。${next && firstClear ? ` 第 ${next} 關現在可以挑戰。` : ''}`, '完成後回想：是哪一個技巧讓盤面開始連鎖解開？');
+    const assessmentNote = checkpointResult ? `，Lv.${checkpointResult.level} 能力檢定${checkpointResult.passedNow || checkpointResult.wasQualified ? '達標' : '未達標'}` : '';
+    recordActivity('puzzle', `完成「${label}」，用時 ${formatTime(state.elapsed)}${assessmentNote}`);
+    if (checkpointResult) {
+      const nextLevel = checkpointResult.level < LEVELS.length ? checkpointResult.level + 1 : null;
+      if (checkpointResult.passedNow) {
+        const title = nextLevel ? `Lv.${nextLevel} 已解鎖！` : '最高級能力水位達成！';
+        setCoach(`Lv.${checkpointResult.level} 能力檢定通過`, title, `完成時間 ${formatTime(state.elapsed)}，達到 ${formatTime(checkpointResult.targetSeconds)} 的能力水位。${nextLevel ? ` 現在可挑戰 Lv.${nextLevel}。` : ''}`, '速度來自穩定的觀察順序；重玩仍會保留更快的最佳成績。');
+      } else if (checkpointResult.wasQualified) {
+        setCoach(`Lv.${checkpointResult.level} 檢定重玩完成`, '已保有達標資格', `本次 ${formatTime(state.elapsed)}；你的達標紀錄不會被取消，最佳時間為 ${formatTime(checkpointResult.bestSeconds)}。`, '可繼續下一級，也可以再次挑戰刷新最佳時間。');
+      } else {
+        const overtime = state.elapsed - checkpointResult.targetSeconds;
+        setCoach(`Lv.${checkpointResult.level} 檢定完成`, '尚未達到能力水位', `本次 ${formatTime(state.elapsed)}，目標為 ${formatTime(checkpointResult.targetSeconds)}，超出 ${formatTime(overtime)}。本關已算完成，但下一級需重考達標後才會解鎖。`, '先檢查卡住最久的盤面階段，再重考同一關；系統會保留最佳時間。');
+      }
+    } else if (challengeNumber) {
+      const next = getNextChallengeNumber(state.learning.completedPuzzles, qualifiedLevelsFrom(state.learning.levelQualifications));
+      setCoach(`第 ${challengeNumber} 關破關`, firstClear ? '下一關已解鎖！' : '重玩完成！', `你用 ${formatTime(state.elapsed)} 完成這題。${next && firstClear ? ` 第 ${next} 關現在可以挑戰。` : ''}`, '完成後回想：是哪一個技巧讓盤面開始連鎖解開？');
     } else {
       setCoach('完成', '漂亮的推理！', `你用 ${formatTime(state.elapsed)} 完成這題。`, '完成後回想：是哪一個技巧讓盤面開始連鎖解開？');
     }
   }
   renderLevelPicker();
   updateNextChallengeButton(challengeNumber);
-  showToast(challengeNumber ? `第 ${challengeNumber} 關破關！進度已保存在這個裝置。` : '恭喜完成！學習紀錄已保存在這個裝置。', 'success');
+  const toastMessage = checkpointResult && !checkpointResult.passedNow && !checkpointResult.wasQualified
+    ? `第 ${challengeNumber} 關已完成；請重考達到時間水位以解鎖下一級。`
+    : checkpointResult?.passedNow
+      ? `Lv.${checkpointResult.level} 能力檢定通過！`
+      : challengeNumber
+        ? `第 ${challengeNumber} 關破關！進度已保存在這個裝置。`
+        : '恭喜完成！學習紀錄已保存在這個裝置。';
+  showToast(toastMessage, 'success');
   renderBoard();
   persistSession();
 }
@@ -1053,7 +1142,7 @@ byId('level-stage-tabs').addEventListener('click', (event) => {
   const stage = Number(button.dataset.levelStage);
   const first = (stage - 1) * 60 + 1;
   const last = first + 59;
-  const nextOpen = getNextChallengeNumber(state.learning.completedPuzzles);
+  const nextOpen = getNextChallengeNumber(state.learning.completedPuzzles, qualifiedLevelsFrom(state.learning.levelQualifications));
   const completedInStage = Array.from({ length: 60 }, (_, index) => first + index).filter((number) => state.learning.completedPuzzles.has(challengeIdFor(number)));
   const target = nextOpen >= first && nextOpen <= last ? nextOpen : completedInStage.at(-1) || first;
   selectChallenge(target);
@@ -1064,7 +1153,7 @@ byId('challenge-map').addEventListener('click', (event) => {
   selectChallenge(Number(button.dataset.challenge));
 });
 byId('bank-start-btn').addEventListener('click', () => {
-  if (!isChallengeUnlocked(state.selectedChallenge, state.learning.completedPuzzles)) return;
+  if (!isChallengeUnlocked(state.selectedChallenge, state.learning.completedPuzzles, qualifiedLevelsFrom(state.learning.levelQualifications))) return;
   const record = getChallenge(state.selectedChallenge);
   loadPuzzle(record, record.title);
   switchView('practice');
@@ -1072,7 +1161,7 @@ byId('bank-start-btn').addEventListener('click', () => {
 });
 byId('next-challenge-btn').addEventListener('click', (event) => {
   const challengeNumber = Number(event.currentTarget.dataset.challenge);
-  if (!isChallengeUnlocked(challengeNumber, state.learning.completedPuzzles)) return;
+  if (!isChallengeUnlocked(challengeNumber, state.learning.completedPuzzles, qualifiedLevelsFrom(state.learning.levelQualifications))) return;
   selectChallenge(challengeNumber);
   const record = getChallenge(challengeNumber);
   loadPuzzle(record, record.title);

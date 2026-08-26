@@ -32,6 +32,7 @@ import { TUTORIALS } from '../src/learning/tutorials.js';
 import {
   LEVELS,
   LEVEL_STAGES,
+  LEVEL_TIME_LIMITS_MINUTES,
   TOTAL_CHALLENGES,
   TOTAL_LEVEL_PUZZLES,
   challengeIdFor,
@@ -39,7 +40,9 @@ import {
   challengeNumberFromId,
   getChallenge,
   getLevelPuzzle,
+  getLevelTimeLimitSeconds,
   getNextChallengeNumber,
+  isLevelCheckpoint,
   isChallengeUnlocked
 } from '../src/learning/level-catalog.js';
 import { PROGRESS_KEY, SESSION_KEY, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
@@ -350,8 +353,13 @@ test('progress migrates and puzzle sessions round-trip through browser storage',
   const migrated = readProgress(storage);
   assert.equal(migrated.solvedCount, 2);
   assert.deepEqual(migrated.lessonResults, {});
-  writeProgress({ ...migrated, lessonResults: { rules: { knowledgePassed: true } } }, storage);
-  assert.equal(JSON.parse(values.get(PROGRESS_KEY)).version, 5);
+  assert.deepEqual(migrated.levelQualifications, {});
+  assert.deepEqual(migrated.challengeBestTimes, {});
+  writeProgress({ ...migrated, lessonResults: { rules: { knowledgePassed: true } }, levelQualifications: { 1: { qualified: true, bestSeconds: 300 } }, challengeBestTimes: { 'L01-Q10': 300 } }, storage);
+  const savedProgress = JSON.parse(values.get(PROGRESS_KEY));
+  assert.equal(savedProgress.version, 6);
+  assert.equal(savedProgress.levelQualifications[1].bestSeconds, 300);
+  assert.equal(savedProgress.challengeBestTimes['L01-Q10'], 300);
   const record = generatePuzzle({ difficulty: 'easy', seed: 'SAVE' });
   writeSession({ id: 'one', record, grid: record.puzzle, notes: Array.from({ length: 81 }, () => []), elapsed: 42 }, storage);
   assert.equal(readSession(storage).elapsed, 42);
@@ -467,8 +475,15 @@ test('five-stage curriculum contains 30 ordered levels and 300 verified puzzles'
   assert.equal(puzzleGrids.size, 300);
 });
 
-test('300-stage challenge maps every puzzle once and unlocks sequentially', () => {
+test('300-stage challenge maps every puzzle once and gates each level with a timed checkpoint', () => {
   assert.equal(TOTAL_CHALLENGES, 300);
+  assert.equal(LEVEL_TIME_LIMITS_MINUTES.length, 30);
+  assert.deepEqual(LEVEL_TIME_LIMITS_MINUTES.slice(0, 3), [6, 7, 8]);
+  assert.deepEqual(LEVEL_TIME_LIMITS_MINUTES.slice(-3), [36, 38, 40]);
+  assert.equal(getLevelTimeLimitSeconds(1), 360);
+  assert.equal(getLevelTimeLimitSeconds(30), 2400);
+  assert.equal(isLevelCheckpoint(10), true);
+  assert.equal(isLevelCheckpoint(11), false);
   for (let number = 1; number <= TOTAL_CHALLENGES; number += 1) {
     const record = getChallenge(number);
     assert.equal(record.challengeNumber, number);
@@ -478,15 +493,25 @@ test('300-stage challenge maps every puzzle once and unlocks sequentially', () =
   }
 
   const completed = new Set();
+  const qualified = new Set();
   assert.equal(getNextChallengeNumber(completed), 1);
-  assert.equal(isChallengeUnlocked(1, completed), true);
-  assert.equal(isChallengeUnlocked(2, completed), false);
+  assert.equal(isChallengeUnlocked(1, completed, qualified), true);
+  assert.equal(isChallengeUnlocked(2, completed, qualified), false);
   completed.add(challengeIdFor(1));
-  assert.equal(getNextChallengeNumber(completed), 2);
-  assert.equal(isChallengeUnlocked(1, completed), true);
-  assert.equal(isChallengeUnlocked(2, completed), true);
-  assert.equal(isChallengeUnlocked(3, completed), false);
-  for (let number = 2; number <= TOTAL_CHALLENGES; number += 1) completed.add(challengeIdFor(number));
-  assert.equal(getNextChallengeNumber(completed), null);
-  assert.equal(isChallengeUnlocked(300, completed), true);
+  assert.equal(getNextChallengeNumber(completed, qualified), 2);
+  assert.equal(isChallengeUnlocked(1, completed, qualified), true);
+  assert.equal(isChallengeUnlocked(2, completed, qualified), true);
+  assert.equal(isChallengeUnlocked(3, completed, qualified), false);
+  for (let number = 2; number <= 10; number += 1) completed.add(challengeIdFor(number));
+  assert.equal(getNextChallengeNumber(completed, qualified), 10);
+  assert.equal(isChallengeUnlocked(10, completed, qualified), true);
+  assert.equal(isChallengeUnlocked(11, completed, qualified), false);
+  qualified.add(1);
+  assert.equal(getNextChallengeNumber(completed, qualified), 11);
+  assert.equal(isChallengeUnlocked(11, completed, qualified), true);
+  assert.equal(isChallengeUnlocked(12, completed, qualified), false);
+  for (let number = 11; number <= TOTAL_CHALLENGES; number += 1) completed.add(challengeIdFor(number));
+  for (let level = 2; level < LEVELS.length; level += 1) qualified.add(level);
+  assert.equal(getNextChallengeNumber(completed, qualified), null);
+  assert.equal(isChallengeUnlocked(300, completed, qualified), true);
 });

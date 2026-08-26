@@ -188,6 +188,12 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .level-bank-heading small { color: var(--ink-soft); }
 .challenge-progress { height: 8px; margin: 0 0 16px; overflow: hidden; border-radius: 99px; background: var(--mint-light); }
 .challenge-progress i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--green), var(--coral)); transition: width .25s ease; }
+.ability-waterline { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; margin: 12px 0; padding: 12px; border: 1px solid #d9e7e2; border-radius: 12px; background: var(--mint-light); }
+.ability-waterline .ability-badge { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; color: #fff; background: var(--green); font-size: 12px; font-weight: 900; }
+.ability-waterline b, .ability-waterline small { display: block; }
+.ability-waterline b { color: var(--green); font-size: 12px; }
+.ability-waterline p { margin: 3px 0 0; color: var(--ink-soft); font-size: 10px; line-height: 1.45; }
+.ability-waterline .ability-result { color: var(--coral); font-size: 10px; font-weight: 900; text-align: right; }
 .level-stage-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .level-stage-tabs button { min-width: 0; padding: 11px 4px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink-soft); background: #fff; cursor: pointer; }
 .level-stage-tabs button b, .level-stage-tabs button small { display: block; }
@@ -207,6 +213,8 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .challenge-node span { font-size: 11px; font-weight: 800; }
 .challenge-node small { margin-top: 1px; font-size: 7px; }
 .challenge-node.complete { border-color: #9fc1b5; background: var(--mint); }
+.challenge-node.assessment { border-style: dashed; }
+.challenge-node.qualified { border-style: solid; border-color: #d6a747; background: #fff3c9; }
 .challenge-node.current { border-color: var(--coral); box-shadow: 0 0 0 2px rgba(232, 115, 93, .17); }
 .challenge-node.current small { color: var(--coral); font-weight: 900; }
 .challenge-node.selected { color: #fff; border-color: var(--green); background: var(--green); }
