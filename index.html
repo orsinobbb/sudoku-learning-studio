@@ -4,9 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#16372f">
-  <meta name="description" content="從候選數到進階策略，會解釋每一步的數獨學習網站。">
+  <meta name="description" content="免費數獨學習網站：300 關、34 種技巧教學、指定位置判讀、下一手分析與每日挑戰。免登入即可開始。">
+  <meta name="robots" content="index,follow">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="zh_TW">
+  <meta property="og:title" content="數織學堂｜真正教你推理的數獨學習網站">
+  <meta property="og:description" content="從唯一候選到 Empty Rectangle，循序練習、分析下一手，挑戰 300 關。">
+  <meta property="og:url" content="https://orsinobbb.github.io/sudoku-learning-studio/">
+  <meta name="twitter:card" content="summary">
+  <link rel="canonical" href="https://orsinobbb.github.io/sudoku-learning-studio/">
   <title>數織學堂｜Sudoku Learning Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20260831-mastery1">
+  <link rel="stylesheet" href="./styles.css?v=20260831-growth1">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Course","name":"數織學堂數獨學習旅程","description":"從基礎候選數到進階鏈與魚形的繁體中文互動數獨課程","provider":{"@type":"Organization","name":"數織學堂"},"isAccessibleForFree":true,"inLanguage":"zh-Hant"}</script>
 </head>
 <body>
   <div class="page-shell">
@@ -15,7 +24,10 @@
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
         <span><b>數織學堂</b><small>SUDOKU LEARNING STUDIO</small></span>
       </a>
-      <div class="progress-pill"><span>本機學習紀錄</span><strong id="solved-count">0 題完成</strong></div>
+      <div class="topbar-actions">
+        <div class="progress-pill"><span>學習紀錄</span><strong id="solved-count">0 題完成</strong></div>
+        <button id="account-btn" class="account-btn" type="button" aria-haspopup="dialog"><span class="account-dot"></span><b>訪客</b><small>雲端備份</small></button>
+      </div>
     </header>
 
     <nav class="main-nav" aria-label="主要功能">
@@ -31,6 +43,23 @@
           <div><p class="eyebrow">LEARN BY REASONING</p><h1>看懂「為什麼」，<br>不只是填入答案。</h1></div>
           <p class="intro">每一題都有候選數、衝突檢查與分步提示。先觀察，再讓教練揭示一個足以繼續前進的線索。</p>
         </div>
+
+        <section class="growth-banner" aria-labelledby="daily-title">
+          <div class="growth-copy">
+            <p class="eyebrow">DAILY REASONING CHALLENGE</p>
+            <h2 id="daily-title">今天也用一個推理，讓盤面往前。</h2>
+            <p id="campaign-message">每日同一題，完成後可把同一盤分享給朋友。免登入即可開始，登入只用於跨裝置備份。</p>
+            <div class="featured-lessons" aria-label="熱門技巧入口">
+              <button type="button" data-featured-lesson="nakedSingle">唯一候選</button>
+              <button type="button" data-featured-lesson="xWing">X-Wing</button>
+              <button type="button" data-featured-lesson="emptyRectangle">Empty Rectangle</button>
+            </div>
+          </div>
+          <div class="growth-actions">
+            <button id="daily-challenge-btn" class="primary-action" type="button">開始今日挑戰</button>
+            <button id="share-site-btn" class="secondary-action" type="button">邀朋友挑戰</button>
+          </div>
+        </section>
 
         <section id="resume-session-card" class="resume-session-card" hidden aria-live="polite"></section>
 
@@ -171,9 +200,50 @@
         </aside>
       </section>
     </main>
-    <footer><span>數織學堂 · 在本機思考，在每一步學習</span><span>無廣告 · 無登入 · 資料不離開裝置</span></footer>
+    <footer><span>數織學堂 · 在本機思考，在每一步學習</span><span>訪客資料留在裝置 · 登入後才同步</span><button id="privacy-btn" type="button">帳號與隱私</button></footer>
   </div>
+  <dialog id="account-dialog" class="site-dialog" aria-labelledby="account-title">
+    <div class="dialog-shell">
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="關閉">×</button></form>
+      <p class="eyebrow">OPTIONAL CLOUD BACKUP</p>
+      <h2 id="account-title">帳號與跨裝置進度</h2>
+      <p class="dialog-lead">不用登入也能完成全部課程。只有你主動登入後，學習進度才會加密傳送到雲端。</p>
+      <div id="account-status" class="account-status" role="status">目前是訪客模式，紀錄保存在這個瀏覽器。</div>
+      <label class="consent-row"><input id="cloud-consent" type="checkbox"> <span>我同意為了跨裝置備份，儲存學習進度與帳號識別碼。不同裝置的紀錄會安全合併，不會互相覆蓋。</span></label>
+      <div id="sign-in-actions" class="sign-in-actions">
+        <button id="google-sign-in" type="button"><b>G</b> 使用 Google 登入</button>
+        <button id="line-sign-in" class="line-sign-in" type="button"><b>LINE</b> 使用 LINE 登入</button>
+      </div>
+      <div id="signed-in-actions" class="signed-in-actions" hidden>
+        <button id="sync-now-btn" type="button">立即同步</button>
+        <button id="sign-out-btn" type="button">登出</button>
+        <button id="delete-account-btn" class="danger-action" type="button">刪除雲端資料與帳號</button>
+      </div>
+      <label class="consent-row optional"><input id="marketing-consent" type="checkbox"> <span>我願意接收未來的學習活動通知（目前不會傳送；與登入、同步分開）。</span></label>
+      <details class="privacy-details">
+        <summary>資料與刪除說明</summary>
+        <p>訪客模式只使用瀏覽器儲存空間。登入後僅同步破關、課程、練習、能力水位與解題回顧；不會上傳目前盤面草稿。你可隨時登出，或在此刪除雲端資料與帳號。<a href="./privacy.html">閱讀完整隱私與刪除說明</a></p>
+      </details>
+    </div>
+  </dialog>
+  <dialog id="share-dialog" class="site-dialog share-dialog" aria-labelledby="share-title">
+    <div class="dialog-shell">
+      <form method="dialog"><button class="dialog-close" type="submit" aria-label="關閉">×</button></form>
+      <p class="eyebrow">CHALLENGE A FRIEND</p>
+      <h2 id="share-title">這題完成了！</h2>
+      <div class="result-card">
+        <strong id="share-result-time">00:00</strong>
+        <span id="share-result-label">完成數獨挑戰</span>
+        <small id="share-result-technique">一步一步都有理由</small>
+      </div>
+      <p class="dialog-lead">分享的是同一盤題目與你的完成時間，不包含筆記、作答內容或帳號資料。</p>
+      <div class="share-actions">
+        <button id="native-share-btn" class="primary-action" type="button">分享挑戰</button>
+        <a id="line-share-link" class="line-share-link" href="#" target="_blank" rel="noreferrer">用 LINE 分享</a>
+      </div>
+    </div>
+  </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./src/app.js?v=20260831-mastery1"></script>
+  <script type="module" src="./src/app.js?v=20260831-growth1"></script>
 </body>
 </html>

@@ -53,7 +53,17 @@ import {
   isLevelCheckpoint,
   isChallengeUnlocked
 } from '../src/learning/level-catalog.js';
-import { PROGRESS_KEY, SESSION_KEY, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
+import { PROGRESS_KEY, SESSION_KEY, mergeProgress, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
+import {
+  MARKETING_KEY,
+  buildChallengeUrl,
+  captureCampaign,
+  dailyChallenge,
+  ensureReferralCode,
+  getMarketingState,
+  setMarketingConsent
+} from '../src/marketing/marketing.js';
+import { cloudConfigStatus } from '../src/cloud/cloud-config.js';
 import {
   aggregateSkillDimensions,
   createPuzzleReview,
@@ -442,7 +452,7 @@ test('progress migrates and puzzle sessions round-trip through browser storage',
   assert.deepEqual(migrated.challengeBestTimes, {});
   writeProgress({ ...migrated, lessonResults: { rules: { knowledgePassed: true } }, levelQualifications: { 1: { qualified: true, bestSeconds: 300 } }, challengeBestTimes: { 'L01-Q10': 300 } }, storage);
   const savedProgress = JSON.parse(values.get(PROGRESS_KEY));
-  assert.equal(savedProgress.version, 7);
+  assert.equal(savedProgress.version, 8);
   assert.deepEqual(migrated.puzzleReviews, []);
   assert.deepEqual(migrated.techniqueUsage, {});
   assert.equal(savedProgress.levelQualifications[1].bestSeconds, 300);
@@ -451,6 +461,64 @@ test('progress migrates and puzzle sessions round-trip through browser storage',
   writeSession({ id: 'one', record, grid: record.puzzle, notes: Array.from({ length: 81 }, () => []), elapsed: 42 }, storage);
   assert.equal(readSession(storage).elapsed, 42);
   assert.equal(JSON.parse(values.get(SESSION_KEY)).version, 1);
+});
+
+test('cloud merge keeps unions, best times, and deduplicated activity history', () => {
+  const local = {
+    solvedCount: 4,
+    completedLessons: ['rules'],
+    completedPuzzles: ['L01-Q01'],
+    activities: [{ type: 'puzzle', detail: '第一題', at: '2026-08-30T10:00:00.000Z' }],
+    challengeBestTimes: { 'L01-Q01': 240 },
+    levelQualifications: { 1: { qualified: false, bestSeconds: 240 } },
+    techniqueUsage: { nakedSingle: { encountered: 3, hinted: 1 } }
+  };
+  const remote = {
+    solvedCount: 7,
+    completedLessons: ['candidates'],
+    completedPuzzles: ['L01-Q02'],
+    activities: [
+      { type: 'puzzle', detail: '第一題', at: '2026-08-30T10:00:00.000Z' },
+      { type: 'lesson', detail: '候選數', at: '2026-08-31T10:00:00.000Z' }
+    ],
+    challengeBestTimes: { 'L01-Q01': 180, 'L01-Q02': 300 },
+    levelQualifications: { 1: { qualified: true, bestSeconds: 180 } },
+    techniqueUsage: { nakedSingle: { encountered: 5, hinted: 0 } }
+  };
+  const merged = mergeProgress(local, remote);
+  assert.equal(merged.solvedCount, 7);
+  assert.deepEqual(new Set(merged.completedLessons), new Set(['rules', 'candidates']));
+  assert.deepEqual(new Set(merged.completedPuzzles), new Set(['L01-Q01', 'L01-Q02']));
+  assert.equal(merged.activities.length, 2);
+  assert.equal(merged.challengeBestTimes['L01-Q01'], 180);
+  assert.equal(merged.levelQualifications[1].qualified, true);
+  assert.equal(merged.levelQualifications[1].bestSeconds, 180);
+  assert.equal(merged.techniqueUsage.nakedSingle.encountered, 5);
+});
+
+test('marketing links preserve only safe challenge and campaign fields', () => {
+  const values = new Map();
+  const storage = { getItem: (key) => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
+  const referral = ensureReferralCode(storage, () => 0.5);
+  assert.match(referral, /^S[A-Z0-9]{8}$/);
+  assert.equal(ensureReferralCode(storage, () => 0.2), referral);
+  const daily = dailyChallenge('2026-08-31');
+  assert.equal(daily.seed, 'DAILY-20260831');
+  const puzzle = '0'.repeat(81);
+  const url = new URL(buildChallengeUrl('https://example.com/app/?old=1#x', { puzzle, difficulty: 'hard', referralCode: referral }));
+  assert.equal(url.searchParams.get('p'), puzzle);
+  assert.equal(url.searchParams.get('d'), 'hard');
+  assert.equal(url.searchParams.get('utm_campaign'), 'puzzle_challenge');
+  assert.equal(url.hash, '');
+  captureCampaign('https://example.com/app/?ref=FRIEND&utm_source=bad%20source&utm_campaign=daily', storage);
+  assert.equal(getMarketingState(storage).campaign.source, 'badsource');
+  assert.equal(setMarketingConsent(true, storage), true);
+  assert.equal(JSON.parse(values.get(MARKETING_KEY)).marketingConsent, true);
+});
+
+test('cloud login stays disabled until all public Firebase settings exist', () => {
+  assert.deepEqual(cloudConfigStatus({ firebase: {} }).missing, ['apiKey', 'authDomain', 'projectId', 'appId']);
+  assert.equal(cloudConfigStatus({ firebase: { apiKey: 'a', authDomain: 'b', projectId: 'c', appId: 'd' } }).ready, true);
 });
 
 test('two trial colors survive serialization and paused state', () => {

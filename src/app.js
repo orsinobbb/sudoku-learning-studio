@@ -12,6 +12,7 @@ import {
   suggestNextMoves,
   parsePuzzle,
   serializeGrid,
+  solveGrid,
   validateGrid
 } from './core/sudoku.js?v=20260825-levels2';
 import {
@@ -37,7 +38,7 @@ import {
   getTechniqueQuestions
 } from './learning/assessments.js?v=20260831-learning1';
 import { getTutorial } from './learning/tutorials.js?v=20260824-advanced1';
-import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260831-learning1';
+import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260831-growth1';
 import {
   aggregateSkillDimensions,
   computeSkillDimensions,
@@ -62,6 +63,16 @@ import {
   isLevelCheckpoint,
   isChallengeUnlocked
 } from './learning/level-catalog.js?v=20260826-ability2';
+import { createCloudAccount } from './cloud/firebase-cloud.js?v=20260831-growth1';
+import {
+  buildChallengeUrl,
+  captureCampaign,
+  dailyChallenge,
+  ensureReferralCode,
+  getMarketingState,
+  setMarketingConsent,
+  trackMarketingEvent
+} from './marketing/marketing.js?v=20260831-growth1';
 
 const byId = (id) => document.getElementById(id);
 const board = byId('sudoku-board');
@@ -72,6 +83,12 @@ const assessmentTechnique = (lesson) => lesson.assessment || (lesson.analyzer !=
 
 const storedProgress = readProgress();
 const pendingSession = readSession();
+const referralCode = ensureReferralCode();
+const incomingCampaign = captureCampaign(window.location.href);
+const incomingParams = new URLSearchParams(window.location.search);
+let cloudAccount = null;
+let accountStatus = { available: false, phase: 'guest', user: null, message: '目前是訪客模式，紀錄保存在這個瀏覽器。' };
+let currentShare = null;
 
 function qualifiedLevelsFrom(records = {}) {
   return new Set(Object.entries(records)
@@ -125,8 +142,8 @@ const state = {
   selectedChallenge: initialChallengeNumber
 };
 
-function persistProgress() {
-  writeProgress({
+function progressSnapshot() {
+  return {
     solvedCount: state.solvedCount,
     completedLessons: [...state.learning.completedLessons],
     completedDrills: [...state.learning.completedDrills],
@@ -140,7 +157,13 @@ function persistProgress() {
     challengeBestTimes: state.learning.challengeBestTimes,
     puzzleReviews: state.learning.puzzleReviews,
     techniqueUsage: state.learning.techniqueUsage
-  });
+  };
+}
+
+function persistProgress() {
+  const progress = progressSnapshot();
+  writeProgress(progress);
+  cloudAccount?.queueSync(progress);
 }
 
 function lessonResult(id) {
@@ -286,6 +309,163 @@ function showToast(message, tone = '') {
 
 function formatTime(seconds) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function openDialog(dialog) {
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+}
+
+function applyMergedProgress(progress) {
+  state.solvedCount = Number(progress.solvedCount || 0);
+  state.learning.completedLessons = new Set(progress.completedLessons || []);
+  state.learning.completedDrills = new Set(progress.completedDrills || []);
+  state.learning.completedPuzzles = new Set(progress.completedPuzzles || []);
+  state.learning.activities = progress.activities || [];
+  state.learning.totalActivities = Number(progress.totalActivities || 0);
+  state.learning.hintsUsed = Number(progress.hintsUsed || 0);
+  state.learning.analysesRun = Number(progress.analysesRun || 0);
+  state.learning.lessonResults = progress.lessonResults || {};
+  state.learning.levelQualifications = progress.levelQualifications || {};
+  state.learning.challengeBestTimes = progress.challengeBestTimes || {};
+  state.learning.puzzleReviews = progress.puzzleReviews || [];
+  state.learning.techniqueUsage = progress.techniqueUsage || {};
+  renderProgress();
+  renderLevelPicker();
+  renderJourney();
+}
+
+function renderAccountStatus(status = accountStatus) {
+  accountStatus = status;
+  const signedIn = Boolean(status.user);
+  const accountButton = byId('account-btn');
+  accountButton.classList.toggle('signed-in', signedIn);
+  accountButton.querySelector('b').textContent = signedIn ? (status.user.displayName || '已登入') : '訪客';
+  accountButton.querySelector('small').textContent = signedIn ? '已連接雲端' : '雲端備份';
+  const statusBox = byId('account-status');
+  statusBox.textContent = status.message;
+  statusBox.classList.toggle('error', status.phase === 'error' || !status.available);
+  byId('sign-in-actions').hidden = signedIn;
+  byId('signed-in-actions').hidden = !signedIn;
+  byId('google-sign-in').disabled = !status.available || status.phase === 'loading';
+  byId('line-sign-in').disabled = !status.available || status.phase === 'loading';
+}
+
+async function initializeAccount() {
+  cloudAccount = await createCloudAccount({
+    readLocalProgress: progressSnapshot,
+    writeLocalProgress: (progress) => writeProgress(progress),
+    onMerged: (progress) => {
+      applyMergedProgress(progress);
+      showToast('本機與雲端進度已合併。', 'success');
+    },
+    onStatus: renderAccountStatus
+  });
+}
+
+async function signInWith(provider) {
+  if (!byId('cloud-consent').checked) {
+    showToast('請先確認雲端儲存說明。', 'warning');
+    return;
+  }
+  try {
+    trackMarketingEvent('login_started', { provider });
+    await cloudAccount.signIn(provider);
+  } catch (error) {
+    showToast(error.message || '登入未完成，請稍後重試。', 'warning');
+  }
+}
+
+function challengeFromCampaign() {
+  const sharedPuzzle = incomingParams.get('p');
+  if (sharedPuzzle && /^[0-9.]{81}$/.test(sharedPuzzle)) {
+    const puzzle = parsePuzzle(sharedPuzzle);
+    const solution = solveGrid(puzzle);
+    if (solution) {
+      const difficulty = Object.hasOwn(DIFFICULTIES, incomingParams.get('d')) ? incomingParams.get('d') : 'medium';
+      return {
+        record: {
+          puzzle,
+          solution,
+          seed: `SHARED-${sharedPuzzle.slice(0, 12)}`,
+          clues: puzzle.filter(Boolean).length,
+          difficulty,
+          difficultyLabel: '好友挑戰'
+        },
+        title: '好友邀請 · 同一盤挑戰',
+        kind: 'shared'
+      };
+    }
+  }
+  const daily = dailyChallenge(incomingParams.get('daily') || new Date());
+  return {
+    record: generatePuzzle({ difficulty: daily.difficulty, seed: daily.seed }),
+    title: `每日挑戰 · ${daily.dateKey}`,
+    kind: 'daily'
+  };
+}
+
+function startCampaignChallenge() {
+  const challenge = challengeFromCampaign();
+  loadPuzzle(challenge.record, challenge.title);
+  switchView('practice');
+  trackMarketingEvent('challenge_started', { kind: challenge.kind });
+  showToast(challenge.kind === 'shared' ? '已載入朋友分享的同一盤題目。' : '今日挑戰已載入。', 'success');
+}
+
+async function sharePayload(payload) {
+  try {
+    if (navigator.share) await navigator.share(payload);
+    else {
+      await navigator.clipboard.writeText(`${payload.text}\n${payload.url}`);
+      showToast('挑戰連結已複製。', 'success');
+    }
+    trackMarketingEvent('challenge_shared', { kind: payload.kind || 'puzzle' });
+  } catch (error) {
+    if (error.name !== 'AbortError') showToast('無法開啟分享，請複製網址後再試。', 'warning');
+  }
+}
+
+function dailySharePayload() {
+  const daily = dailyChallenge();
+  return {
+    title: '數織學堂每日挑戰',
+    text: `今天的數獨推理挑戰是 ${daily.dateKey}，一起來解！`,
+    url: buildChallengeUrl(window.location.href, { dateKey: daily.dateKey, referralCode }),
+    kind: 'daily'
+  };
+}
+
+function openResultShare(puzzleReview) {
+  const puzzle = serializeGrid(state.record.puzzle, '0');
+  const technique = puzzleReview.techniques?.[0]?.technique;
+  const techniqueLabel = strategyNames[technique] || state.record.techniqueLabel || '邏輯推理';
+  const payload = {
+    title: '數織學堂挑戰',
+    text: `我用 ${formatTime(state.elapsed)} 完成「${state.title}」，主要觀察 ${techniqueLabel}。換你挑戰同一盤！`,
+    url: buildChallengeUrl(window.location.href, { puzzle, difficulty: state.record.difficulty, referralCode }),
+    kind: 'completed-puzzle'
+  };
+  currentShare = payload;
+  byId('share-result-time').textContent = formatTime(state.elapsed);
+  byId('share-result-label').textContent = state.title;
+  byId('share-result-technique').textContent = `主要觀察：${techniqueLabel}`;
+  byId('line-share-link').href = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(payload.url)}&text=${encodeURIComponent(payload.text)}`;
+  openDialog(byId('share-dialog'));
+}
+
+function initializeMarketing() {
+  const isShared = /^[0-9.]{81}$/.test(incomingParams.get('p') || '');
+  const sharedDaily = /^\d{4}-\d{2}-\d{2}$/.test(incomingParams.get('daily') || '');
+  if (isShared) {
+    byId('campaign-message').textContent = '朋友邀你挑戰同一盤題目。開始後會另存為練習，不會跳過你的破關進度。';
+    byId('daily-challenge-btn').textContent = '接受好友挑戰';
+  } else if (sharedDaily || incomingCampaign?.ref) {
+    byId('campaign-message').textContent = '你從好友的挑戰連結抵達。免登入即可作答，完成後也能分享同一盤。';
+    byId('daily-challenge-btn').textContent = sharedDaily ? '開始這天的挑戰' : '開始今日挑戰';
+  }
+  byId('marketing-consent').checked = getMarketingState().marketingConsent;
+  trackMarketingEvent('landing_viewed', { campaign: incomingCampaign?.name || '', referred: Boolean(incomingCampaign?.ref) });
 }
 
 function startTimer() {
@@ -810,6 +990,8 @@ function completePuzzle() {
   showToast(toastMessage, 'success');
   renderBoard();
   persistSession();
+  trackMarketingEvent('puzzle_completed', { difficulty: state.record.difficulty || '', challengeNumber: challengeNumber || 0 });
+  if (!state.activeDrill) openResultShare(puzzleReview);
 }
 
 function requestHint() {
@@ -1404,8 +1586,45 @@ renderResumeCard(pendingSession);
 byId('seed-input').value = randomSeed();
 renderLevelPicker();
 renderJourney();
+initializeMarketing();
+renderAccountStatus();
+void initializeAccount();
 
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
+document.querySelectorAll('[data-featured-lesson]').forEach((button) => button.addEventListener('click', () => {
+  switchView('learn');
+  openLesson(button.dataset.featuredLesson);
+  trackMarketingEvent('featured_lesson_opened', { lesson: button.dataset.featuredLesson });
+}));
+byId('daily-challenge-btn').addEventListener('click', startCampaignChallenge);
+byId('share-site-btn').addEventListener('click', () => sharePayload(dailySharePayload()));
+byId('native-share-btn').addEventListener('click', () => currentShare && sharePayload(currentShare));
+byId('line-share-link').addEventListener('click', () => trackMarketingEvent('challenge_shared', { channel: 'line' }));
+byId('account-btn').addEventListener('click', () => openDialog(byId('account-dialog')));
+byId('privacy-btn').addEventListener('click', () => openDialog(byId('account-dialog')));
+byId('google-sign-in').addEventListener('click', () => signInWith('google'));
+byId('line-sign-in').addEventListener('click', () => signInWith('line'));
+byId('marketing-consent').addEventListener('change', (event) => {
+  setMarketingConsent(event.currentTarget.checked);
+  showToast(event.currentTarget.checked ? '已記錄活動通知偏好。' : '已取消活動通知偏好。');
+});
+byId('sync-now-btn').addEventListener('click', async () => {
+  try { await cloudAccount?.syncNow(progressSnapshot()); }
+  catch (error) { showToast(`同步失敗：${error.message}`, 'warning'); }
+});
+byId('sign-out-btn').addEventListener('click', async () => {
+  await cloudAccount?.signOut();
+  showToast('已登出；本機進度仍保留。');
+});
+byId('delete-account-btn').addEventListener('click', async () => {
+  if (!window.confirm('確定刪除雲端進度與登入帳號？本機進度會保留。')) return;
+  try {
+    await cloudAccount?.deleteAccount();
+    showToast('雲端資料與帳號已刪除；本機進度仍保留。', 'success');
+  } catch (error) {
+    showToast(`刪除未完成：${error.message}`, 'warning');
+  }
+});
 document.querySelectorAll('[data-number]').forEach((button) => button.addEventListener('click', () => enterNumber(Number(button.dataset.number))));
 document.querySelectorAll('[data-difficulty]').forEach((button) => button.addEventListener('click', () => {
   state.generatorDifficulty = button.dataset.difficulty;
