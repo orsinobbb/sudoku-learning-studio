@@ -212,7 +212,7 @@
       <label class="consent-row"><input id="cloud-consent" type="checkbox"> <span>我同意為了跨裝置備份，儲存學習進度與帳號識別碼。不同裝置的紀錄會安全合併，不會互相覆蓋。</span></label>
       <div id="sign-in-actions" class="sign-in-actions">
         <button id="google-sign-in" type="button"><b>G</b> 使用 Google 登入</button>
-        <button id="line-sign-in" class="line-sign-in" type="button"><b>LINE</b> 使用 LINE 登入</button>
+        <button id="line-sign-in" class="line-sign-in" type="button" disabled aria-disabled="true" title="LINE 登入尚未啟用"><b>LINE</b> LINE 登入（尚未啟用）</button>
       </div>
       <div id="signed-in-actions" class="signed-in-actions" hidden>
         <button id="sync-now-btn" type="button">立即同步</button>
@@ -244,6 +244,6 @@
     </div>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./src/app.js?v=20260831-growth1"></script>
+  <script type="module" src="./src/app.js?v=20260831-growth2"></script>
 </body>
 </html>

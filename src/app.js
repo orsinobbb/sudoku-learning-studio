@@ -348,7 +348,7 @@ function renderAccountStatus(status = accountStatus) {
   byId('sign-in-actions').hidden = signedIn;
   byId('signed-in-actions').hidden = !signedIn;
   byId('google-sign-in').disabled = !status.available || status.phase === 'loading';
-  byId('line-sign-in').disabled = !status.available || status.phase === 'loading';
+  byId('line-sign-in').disabled = true;
 }
 
 async function initializeAccount() {
