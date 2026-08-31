@@ -2,11 +2,11 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#16372f">
   <meta name="description" content="從候選數到進階策略，會解釋每一步的數獨學習網站。">
   <title>數織學堂｜Sudoku Learning Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20260826-ability2">
+  <link rel="stylesheet" href="./styles.css?v=20260831-mastery1">
 </head>
 <body>
   <div class="page-shell">
@@ -134,12 +134,21 @@
         <div class="journey-dashboard">
           <div class="journey-stat"><span>課程進度</span><strong id="lesson-progress">0 / 34</strong><div class="meter"><i id="lesson-progress-bar"></i></div></div>
           <div class="journey-stat"><span>分析器能力</span><strong id="detector-count">30 種技巧</strong><small>另將搜尋驗證獨立標示</small></div>
-          <div class="journey-stat"><span>定點考題</span><strong id="drill-progress">0 / 93</strong><small>31 種技巧，每種 3 個盤面</small></div>
+          <div class="journey-stat"><span>推理考核</span><strong id="drill-progress">0 / 341</strong><small>每技巧 11 題動作＋理由，另有示範</small></div>
           <div class="journey-stat"><span>學習活動</span><strong id="activity-count">0 次</strong><small>只保存在這個瀏覽器</small></div>
+          <div class="journey-stat"><span>間隔複習</span><strong id="review-due-count">0 課待複習</strong><small>完成後第 1、3、7、21 天回看</small></div>
         </div>
         <section id="continue-card" class="continue-card" aria-live="polite"></section>
+        <section class="learning-insights" aria-label="能力與複習">
+          <article class="skill-map-panel"><div><p class="eyebrow">FIVE-DIMENSION MASTERY</p><h2>能力水位</h2><p>不是只看答對率；分開追蹤理解、辨識、執行、遷移與保留。</p></div><div id="skill-map" class="skill-map"></div></article>
+          <article class="review-queue-panel"><div><p class="eyebrow">SPACED REVIEW</p><h2>今日複習</h2><p>到期課程優先；答對會推進到下一個間隔。</p></div><div id="review-queue" class="review-queue"></div></article>
+        </section>
         <section id="lesson-workbench" class="lesson-workbench" hidden aria-live="polite"></section>
         <div id="journey-stages" class="journey-stages"></div>
+        <section class="puzzle-review-panel">
+          <div><p class="eyebrow">POST-PUZZLE REVIEW</p><h2>完題回顧</h2><p>保留最近 30 次：耗時、求助、卡點、題目所需技巧與下一步練法。</p></div>
+          <div id="puzzle-review-list" class="puzzle-review-list"></div>
+        </section>
         <section class="history-panel">
           <div><p class="eyebrow">LEARNING HISTORY</p><h2>你的學習歷程</h2><p>記錄理解檢核、定點考試、提示、分析與解題完成；不會上傳。</p></div>
           <ol id="learning-history" class="learning-history"></ol>
@@ -165,6 +174,6 @@
     <footer><span>數織學堂 · 在本機思考，在每一步學習</span><span>無廣告 · 無登入 · 資料不離開裝置</span></footer>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./src/app.js?v=20260826-ability2"></script>
+  <script type="module" src="./src/app.js?v=20260831-mastery1"></script>
 </body>
 </html>

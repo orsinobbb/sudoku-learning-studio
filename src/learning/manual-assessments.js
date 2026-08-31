@@ -9,7 +9,16 @@ const exactUnit = (kind, number, digit, names) => ({ kind, number, digit, names 
 const TRANSFORMS = [
   { label: '聚焦候選圖 A', map: (row, col) => [row, col], shift: 0 },
   { label: '聚焦候選圖 B（轉置）', map: (row, col) => [col, row], shift: 3 },
-  { label: '聚焦候選圖 C（旋轉）', map: (row, col) => [10 - row, 10 - col], shift: 5 }
+  { label: '聚焦候選圖 C（旋轉）', map: (row, col) => [10 - row, 10 - col], shift: 5 },
+  { label: '聚焦候選圖 D（左右鏡射）', map: (row, col) => [row, 10 - col], shift: 7 },
+  { label: '聚焦候選圖 E（上下鏡射）', map: (row, col) => [10 - row, col], shift: 2 },
+  { label: '聚焦候選圖 F（順時針旋轉）', map: (row, col) => [col, 10 - row], shift: 4 },
+  { label: '聚焦候選圖 G（逆時針旋轉）', map: (row, col) => [10 - col, row], shift: 6 },
+  { label: '聚焦候選圖 H（宮帶輪替）', map: (row, col) => [((row + 2) % 9) + 1, col], shift: 1 },
+  { label: '聚焦候選圖 I（宮疊輪替）', map: (row, col) => [row, ((col + 2) % 9) + 1], shift: 8 },
+  { label: '聚焦候選圖 J（帶內行輪替）', map: (row, col) => [Math.floor((row - 1) / 3) * 3 + (row % 3) + 1, col], shift: 3 },
+  { label: '聚焦候選圖 K（疊內列輪替）', map: (row, col) => [row, Math.floor((col - 1) / 3) * 3 + (col % 3) + 1], shift: 5 },
+  { label: '聚焦候選圖 L（轉置鏡射）', map: (row, col) => [10 - col, 10 - row], shift: 7 }
 ];
 
 const definitions = {

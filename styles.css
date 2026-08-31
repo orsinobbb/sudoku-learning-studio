@@ -255,7 +255,7 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .analysis-error p { margin: 5px 0 0; font-size: 12px; }
 .analysis-boundary { padding: 10px 12px; border-left: 3px solid var(--gold); background: #fbf3df; color: #705b31; font-size: 11px; line-height: 1.6; }
 
-.journey-dashboard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.journey-dashboard { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
 .journey-stat { min-height: 126px; padding: 21px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 253, 248, .88); }
 .journey-stat span, .journey-stat small { display: block; color: var(--ink-soft); font-size: 11px; }
 .journey-stat strong { display: block; margin: 9px 0 14px; color: var(--green); font-size: 25px; }
@@ -266,6 +266,30 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .continue-card p { margin: 0; max-width: 700px; color: #d9e6e1; font-size: 12px; line-height: 1.7; }
 .continue-card button, .lesson-action, .drill-action, .stage-practice { border: 0; border-radius: 999px; cursor: pointer; font-weight: 700; }
 .continue-card button { padding: 12px 18px; background: var(--coral); color: white; }
+.learning-insights { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0 0 28px; }
+.skill-map-panel, .review-queue-panel, .puzzle-review-panel { padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255, 253, 248, .88); }
+.skill-map-panel h2, .review-queue-panel h2, .puzzle-review-panel h2 { margin: 0 0 7px; font-size: 22px; }
+.skill-map-panel > div > p:last-child, .review-queue-panel > div > p:last-child, .puzzle-review-panel > div > p:last-child { margin: 0; color: var(--ink-soft); font-size: 11px; line-height: 1.65; }
+.skill-map { display: grid; gap: 9px; margin-top: 20px; }
+.skill-dimension { display: grid; grid-template-columns: 92px 1fr 32px; gap: 10px; align-items: center; font-size: 10px; }
+.skill-dimension > div { height: 7px; overflow: hidden; border-radius: 99px; background: var(--mint); }
+.skill-dimension i { display: block; width: var(--score); height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--green), #72a88f); }
+.skill-dimension b { text-align: right; color: var(--green); font-variant-numeric: tabular-nums; }
+.review-queue { display: grid; gap: 8px; margin-top: 17px; }
+.review-item { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; width: 100%; min-height: 52px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; text-align: left; background: white; cursor: pointer; }
+.review-item span { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--ink-soft); font-size: 9px; }
+.review-item b { font-size: 11px; }
+.review-item small { color: var(--ink-soft); font-size: 9px; }
+.review-item.due { border-color: #e7a391; background: #fff5f1; }
+.review-item.due span { color: #a94f3f; font-weight: 800; }
+.insight-empty { margin: 15px 0 0; padding: 15px; border-radius: 11px; color: var(--ink-soft); background: var(--mint-light); font-size: 11px; line-height: 1.65; }
+.puzzle-review-panel { display: grid; grid-template-columns: minmax(210px, .4fr) 1fr; gap: 28px; margin: 28px 0; }
+.puzzle-review-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.puzzle-review-list article { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.puzzle-review-list article span { color: var(--coral); font-size: 9px; font-weight: 800; }
+.puzzle-review-list h3 { margin: 4px 0 9px; font-size: 13px; }
+.puzzle-review-list p { margin: 4px 0; color: var(--ink-soft); font-size: 10px; line-height: 1.55; }
+.puzzle-review-list small { display: block; margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); color: #8a6940; font-size: 9px; line-height: 1.55; }
 .journey-stages { display: grid; gap: 16px; padding-bottom: 30px; }
 .journey-stage { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: rgba(255, 253, 248, .88); }
 .stage-heading { display: grid; grid-template-columns: 52px 1fr auto; gap: 16px; align-items: start; padding: 24px; }
@@ -319,6 +343,15 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .workbench-title { display: flex; justify-content: space-between; align-items: center; padding: 24px 28px; color: white; background: var(--green-dark); }
 .workbench-title h2 { margin: 5px 0 0; font-size: 28px; }
 .workbench-title button { width: 36px; height: 36px; border: 1px solid rgba(255,255,255,.3); border-radius: 50%; color: white; background: transparent; cursor: pointer; font-size: 22px; }
+.lesson-phase-nav { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; padding: 1px 0; background: var(--line); }
+.lesson-phase-nav button { display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 50px; padding: 8px; border: 0; color: var(--ink-soft); background: white; cursor: pointer; font-size: 10px; font-weight: 700; }
+.lesson-phase-nav button i { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 50%; color: var(--green); background: var(--mint); font-style: normal; }
+.lesson-phase-nav button.active { color: white; background: var(--green); }
+.lesson-phase-nav button.active i { color: var(--green); background: white; }
+.lesson-mastery-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 12px 27px; background: #f6f8f6; }
+.lesson-mastery-strip > div { display: grid; grid-template-columns: 1fr auto; gap: 5px 8px; color: var(--ink-soft); font-size: 9px; }
+.lesson-mastery-strip b { color: var(--green); }
+.lesson-mastery-strip i { grid-column: 1 / -1; height: 4px; overflow: hidden; border-radius: 99px; background: linear-gradient(90deg, var(--coral) var(--score), var(--mint) var(--score)); }
 .tutorial-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line); }
 .tutorial-grid article { min-height: 125px; padding: 22px 25px; background: white; }
 .tutorial-grid article > b { color: var(--green); font-size: 11px; }
@@ -332,6 +365,10 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .check-feedback { margin: 12px 0 0; color: var(--ink-soft); font-size: 11px; }
 .pass-note { display: block; margin-top: 10px; color: #2f7d62; font-size: 11px; }
 .target-assessment { padding: 27px; border-top: 1px solid var(--line); }
+.phase-intro { margin-bottom: 20px; padding: 16px 18px; border-left: 4px solid var(--coral); border-radius: 0 12px 12px 0; background: #fff5f1; }
+.phase-intro > span { color: var(--coral); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
+.phase-intro h3 { margin: 5px 0; font-size: 17px; }
+.phase-intro p { margin: 0; color: var(--ink-soft); font-size: 11px; line-height: 1.65; }
 .target-intro h2 { margin: 5px 0; font-size: 22px; }
 .target-intro p { margin: 0 0 20px; color: var(--ink-soft); font-size: 11px; }
 .assessment-head { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 17px; }
@@ -341,7 +378,18 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .mode-switch button { border: 0; padding: 7px 11px; background: transparent; }
 .mode-switch button.active { color: white; background: var(--green); }
 .assessment-layout { display: grid; grid-template-columns: minmax(320px, 520px) 1fr; gap: 24px; align-items: start; }
-.assessment-board { display: grid; grid-template-columns: repeat(9, 1fr); aspect-ratio: 1; border: 2px solid var(--green-dark); background: var(--paper); }
+.assessment-board-wrap { position: relative; width: min(100%, 520px); margin: 0 auto; aspect-ratio: 1; }
+.assessment-board { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(9, 1fr); width: 100%; aspect-ratio: 1; border: 2px solid var(--green-dark); background: var(--paper); }
+.assessment-overlay { position: absolute; z-index: 3; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.fish-base { fill: rgba(45, 130, 100, .13); stroke: rgba(30, 81, 68, .42); stroke-width: 5; }
+.fish-cover { fill: rgba(230, 117, 95, .09); stroke: rgba(230, 117, 95, .42); stroke-width: 5; }
+.logic-link { stroke: #d26b55; stroke-width: 8; stroke-linecap: round; opacity: .82; }
+.logic-link.weak { stroke-dasharray: 18 16; stroke: #748e84; }
+.logic-node { fill: rgba(255,255,255,.28); stroke-width: 9; }
+.logic-node.a { stroke: #23765f; }
+.logic-node.b { stroke: #d26b55; }
+.logic-node.target { fill: rgba(230, 117, 95, .2); stroke: #d45c45; }
+.logic-group { fill: rgba(214, 168, 79, .1); stroke: #bf8e30; stroke-width: 7; stroke-dasharray: 14 9; }
 .assessment-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 0; border-right: 1px solid #cdd8d3; border-bottom: 1px solid #cdd8d3; color: var(--green); background: transparent; cursor: pointer; }
 .assessment-cell:nth-child(3n) { border-right: 2px solid var(--green-dark); }
 .assessment-cell:nth-child(9n) { border-right: 0; }
@@ -351,13 +399,28 @@ h1 { margin: 0; max-width: 700px; font-size: clamp(34px, 4.4vw, 58px); line-heig
 .assessment-cell.selected { box-shadow: inset 0 0 0 3px var(--coral); background: #fff2ed; }
 .assessment-cell.related { background: #d9eee5; }
 .assessment-cell.target { box-shadow: inset 0 0 0 3px #d97757; background: #ffe0d6; }
+.assessment-cell.logic-a { background: #daf0e6; }
+.assessment-cell.logic-b { background: #fce7df; }
 .assessment-cell > span { display: grid; grid-template-columns: repeat(3, 1fr); width: 90%; height: 90%; }
 .assessment-cell i { display: grid; place-items: center; color: #61716b; font-size: clamp(7px, 2vw, 10px); font-style: normal; font-weight: 650; }
+.assessment-cell i.focus-candidate { border-radius: 50%; color: #7d2d21; background: #ffd4c8; font-weight: 900; }
 .assessment-pad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; margin-top: 9px; }
 .assessment-pad button { aspect-ratio: 1.2; border: 1px solid var(--line); border-radius: 7px; color: var(--green); background: white; cursor: pointer; font-weight: 800; }
 .assessment-coach { padding: 20px; border-radius: 15px; background: var(--mint-light); }
 .assessment-coach > p { color: var(--ink-soft); font-size: 12px; line-height: 1.7; }
 .assessment-feedback, .answer-explanation { margin: 13px 0; padding: 13px; border-left: 3px solid var(--coral); background: white; color: var(--ink-soft); font-size: 11px; line-height: 1.65; }
+.question-source { align-self: start; padding: 5px 8px; border-radius: 99px; color: #8a6940 !important; background: #fbf3df; white-space: nowrap; }
+.question-source.independent { color: var(--green) !important; background: var(--mint); }
+.reason-check { display: grid; gap: 9px; margin: 13px 0; padding: 13px; border-radius: 11px; background: #fff; }
+.reason-check > b { font-size: 11px; }
+.reason-check > p { margin: 0; color: #8a6940; font-size: 10px; line-height: 1.6; }
+.reason-choices, .discrimination-choices { display: grid; gap: 7px; }
+.reason-choices button, .discrimination-choices button, .transfer-action button { min-height: 40px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; text-align: left; color: var(--green); background: white; cursor: pointer; font-size: 10px; line-height: 1.5; }
+.reason-choices button:hover, .discrimination-choices button:hover { border-color: var(--green); background: var(--mint); }
+.noninteractive-board .assessment-cell { cursor: default; }
+.transfer-action { display: flex; justify-content: space-between; gap: 20px; align-items: center; margin-top: 18px; padding: 17px; border: 1px dashed #d6a84f; border-radius: 12px; background: #fffaf0; }
+.transfer-action p { margin: 4px 0 0; color: var(--ink-soft); font-size: 10px; line-height: 1.6; }
+.transfer-action button { flex: 0 0 auto; border-color: var(--coral); color: white; background: var(--coral); font-weight: 800; }
 .answer-explanation p { margin: 5px 0; }
 .answer-explanation small { color: #8a6940; }
 .assessment-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -386,6 +449,8 @@ footer { display: flex; justify-content: space-between; padding: 24px 0 35px; bo
 
 @media (max-width: 900px) {
   .journey-dashboard { grid-template-columns: repeat(2, 1fr); }
+  .learning-insights { grid-template-columns: 1fr; }
+  .puzzle-review-panel { grid-template-columns: 1fr; }
   .section-heading { grid-template-columns: 1fr; gap: 20px; }
   .intro { max-width: 600px; }
   .practice-grid { grid-template-columns: 1fr; }
@@ -405,8 +470,9 @@ footer { display: flex; justify-content: space-between; padding: 24px 0 35px; bo
   .brand b { font-size: 18px; }
   .brand-mark { width: 36px; }
   .progress-pill span { display: none; }
-  .main-nav { overflow-x: auto; scrollbar-width: none; }
-  .nav-item { flex: 0 0 auto; padding: 9px 12px; font-size: 12px; }
+  .main-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; overflow: visible; }
+  .nav-item { min-width: 0; padding: 9px 2px; font-size: 11px; white-space: nowrap; }
+  .nav-item span { margin-right: 3px; }
   .section-heading { padding: 40px 0 27px; }
   h1 { font-size: 37px; }
   .practice-grid { gap: 16px; padding-bottom: 45px; }
@@ -442,13 +508,22 @@ footer { display: flex; justify-content: space-between; padding: 24px 0 35px; bo
   .journey-dashboard { grid-template-columns: 1fr; }
   .journey-stat { min-height: 0; }
   .continue-card { grid-template-columns: 1fr; }
+  .learning-insights { grid-template-columns: 1fr; }
+  .skill-map-panel, .review-queue-panel, .puzzle-review-panel { padding: 19px 15px; }
+  .puzzle-review-list { grid-template-columns: 1fr; }
   .resume-session-card { grid-template-columns: 1fr; }
   .resume-session-card > div:last-child { flex-wrap: wrap; }
   .tutorial-grid { grid-template-columns: 1fr; }
+  .lesson-phase-nav button { min-width: 0; min-height: 61px; flex-direction: column; gap: 4px; padding: 6px 2px; font-size: 8px; }
+  .lesson-mastery-strip { padding: 10px 12px; gap: 4px; }
+  .lesson-mastery-strip > div { font-size: 8px; }
   .workbench-title, .target-assessment, .knowledge-check { padding: 19px 15px; }
   .assessment-head { display: grid; }
   .assessment-layout { grid-template-columns: minmax(0, 1fr); }
   .assessment-cell i { font-size: clamp(7px, 2.2vw, 9px); }
+  .question-source { white-space: normal; }
+  .transfer-action { align-items: stretch; flex-direction: column; }
+  .transfer-action button { text-align: center; }
   .stage-heading { grid-template-columns: 44px 1fr; padding: 19px 15px; }
   .stage-number { width: 40px; height: 40px; }
   .stage-meta { grid-column: 2; text-align: left; }

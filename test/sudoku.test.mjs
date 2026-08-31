@@ -22,7 +22,13 @@ import {
 import { ADVANCED_TECHNIQUE_ORDER, findAdvancedMoves } from '../src/core/advanced-techniques.js';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS } from '../src/learning/curriculum.js';
 import { TECHNIQUE_DRILLS } from '../src/learning/drills.js';
-import { evaluateTechniqueAnswer, getTechniqueQuestions } from '../src/learning/assessments.js';
+import {
+  evaluateDiscriminationAnswer,
+  evaluateReasonAnswer,
+  evaluateTechniqueAnswer,
+  getDiscriminationQuestions,
+  getTechniqueQuestions
+} from '../src/learning/assessments.js';
 import {
   MANUAL_ASSESSMENT_TECHNIQUES,
   countCandidateStateSolutions,
@@ -48,6 +54,13 @@ import {
   isChallengeUnlocked
 } from '../src/learning/level-catalog.js';
 import { PROGRESS_KEY, SESSION_KEY, readProgress, readSession, writeProgress, writeSession } from '../src/learning/storage.js';
+import {
+  aggregateSkillDimensions,
+  createPuzzleReview,
+  hintSupportFor,
+  isReviewDue,
+  scheduleReview
+} from '../src/learning/mastery.js';
 import {
   clearTrials,
   confirmTrials,
@@ -283,6 +296,76 @@ test('every targeted technique has three target-position questions with exact gr
   }
 });
 
+test('every targeted technique has a 12-question bank with reason grading and mixed discrimination', () => {
+  for (const lesson of TARGETED_LESSONS) {
+    const technique = lesson.assessment || lesson.analyzer;
+    const questions = getTechniqueQuestions(technique, 12);
+    assert.equal(questions.length, 12, `${technique} should have 12 questions`);
+    assert.equal(new Set(questions.map(({ boardKey }) => boardKey)).size, 12, `${technique} boards should be unique`);
+    for (const question of questions) {
+      const correctReasons = question.reasonChoices.filter(({ correct }) => correct);
+      assert.equal(question.reasonChoices.length, 4, `${technique} should offer four reason choices`);
+      assert.equal(correctReasons.length, 1, `${technique} should have one exact reason`);
+      assert.equal(evaluateReasonAnswer(question, correctReasons[0].id), true);
+      assert.equal(evaluateReasonAnswer(question, question.reasonChoices.find(({ correct }) => !correct).id), false);
+    }
+
+    const discrimination = getDiscriminationQuestions(technique, 4);
+    assert.equal(discrimination.length, 4, `${technique} should have four discrimination questions`);
+    for (const question of discrimination) {
+      assert.equal(evaluateDiscriminationAnswer(question, question.actualTechnique || 'none'), true);
+      assert.equal(question.choices.length, 4);
+    }
+    const noneQuestion = discrimination.find(({ actualTechnique }) => actualTechnique === null);
+    assert.ok(noneQuestion, `${technique} should include an above-none case`);
+    assert.equal(noneQuestion.choices.some(({ technique: offered }) => offered === noneQuestion.sourceTechnique), false,
+      `${technique} above-none source must not be one of the offered techniques`);
+  }
+});
+
+test('mastery uses fading support, 1-3-7-21 review, skill dimensions and puzzle review evidence', () => {
+  assert.equal(hintSupportFor({}, 'worked', 0), 3);
+  assert.equal(hintSupportFor({}, 'scaffold', 1), 2);
+  assert.equal(hintSupportFor({}, 'scaffold', 2), 1);
+  assert.equal(hintSupportFor({}, 'scaffold', 3), 0);
+
+  const dates = [
+    '2026-09-01T00:00:00.000Z',
+    '2026-09-04T00:00:00.000Z',
+    '2026-09-11T00:00:00.000Z',
+    '2026-10-02T00:00:00.000Z'
+  ];
+  let result = {};
+  let now = '2026-08-31T00:00:00.000Z';
+  dates.forEach((expected, index) => {
+    result = scheduleReview(result, { correct: true, now });
+    assert.equal(result.reviewStage, index + 1);
+    assert.equal(result.nextReviewAt, expected);
+    assert.equal(isReviewDue(result, expected), true);
+    now = expected;
+  });
+
+  const dimensions = aggregateSkillDimensions([{
+    knowledgePassed: true,
+    discriminationPassedIds: ['a', 'b', 'c', 'd'],
+    reasonPassedQuestionIds: ['1', '2', '3', '4', '5', '6'],
+    attempts: 6,
+    reasonAttempts: 6,
+    transferPassed: true,
+    reviewStage: 4
+  }]);
+  for (const key of ['understanding', 'recognition', 'execution', 'transfer', 'retention']) assert.equal(dimensions[key], 100);
+
+  const review = createPuzzleReview({
+    id: 'challenge-001', title: '測試關卡', elapsed: 180, hints: 1, stalls: 2,
+    analysis: { logicalOnly: true, techniqueCounts: { nakedSingle: 3, xWing: 0 } },
+    usedTechniques: ['nakedSingle', 'nakedSingle'], completedAt: '2026-08-31T00:03:00.000Z'
+  });
+  assert.deepEqual(review.techniques, [{ technique: 'nakedSingle', count: 3 }]);
+  assert.deepEqual(review.usedTechniques, ['nakedSingle']);
+  assert.equal(review.logicalOnly, true);
+});
+
 test('Empty Rectangle questions contain a real empty intersection and verified external strong link', () => {
   for (const question of getTechniqueQuestions('emptyRectangle', 3)) {
     const digit = question.answers[0].digit;
@@ -359,7 +442,9 @@ test('progress migrates and puzzle sessions round-trip through browser storage',
   assert.deepEqual(migrated.challengeBestTimes, {});
   writeProgress({ ...migrated, lessonResults: { rules: { knowledgePassed: true } }, levelQualifications: { 1: { qualified: true, bestSeconds: 300 } }, challengeBestTimes: { 'L01-Q10': 300 } }, storage);
   const savedProgress = JSON.parse(values.get(PROGRESS_KEY));
-  assert.equal(savedProgress.version, 6);
+  assert.equal(savedProgress.version, 7);
+  assert.deepEqual(migrated.puzzleReviews, []);
+  assert.deepEqual(migrated.techniqueUsage, {});
   assert.equal(savedProgress.levelQualifications[1].bestSeconds, 300);
   assert.equal(savedProgress.challengeBestTimes['L01-Q10'], 300);
   const record = generatePuzzle({ difficulty: 'easy', seed: 'SAVE' });

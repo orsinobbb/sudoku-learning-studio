@@ -28,9 +28,26 @@ import {
 } from './core/trial.js?v=20260825-trial2';
 import { ALL_LESSONS, DETECTABLE_LESSONS, JOURNEY_STAGES, TARGETED_LESSONS, TECHNIQUE_NAMES } from './learning/curriculum.js?v=20260824-advanced1';
 import { DRILL_BY_TECHNIQUE } from './learning/drills.js?v=20260824-advanced1';
-import { evaluateTechniqueAnswer, getTechniqueQuestions } from './learning/assessments.js?v=20260824-advanced1';
+import {
+  diagnoseTechniqueAnswer,
+  evaluateDiscriminationAnswer,
+  evaluateReasonAnswer,
+  evaluateTechniqueAnswer,
+  getDiscriminationQuestions,
+  getTechniqueQuestions
+} from './learning/assessments.js?v=20260831-learning1';
 import { getTutorial } from './learning/tutorials.js?v=20260824-advanced1';
-import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260826-ability1';
+import { readProgress, readSession, writeProgress, writeSession } from './learning/storage.js?v=20260831-learning1';
+import {
+  aggregateSkillDimensions,
+  computeSkillDimensions,
+  createPuzzleReview,
+  hintSupportFor,
+  isReviewDue,
+  normalizeLessonResult,
+  recordDiagnostic,
+  scheduleReview
+} from './learning/mastery.js?v=20260831-learning1';
 import {
   LEVELS,
   LEVEL_STAGES,
@@ -72,7 +89,9 @@ const learningProfile = {
   analysesRun: Number(storedProgress.analysesRun || 0),
   lessonResults: storedProgress.lessonResults,
   levelQualifications: storedProgress.levelQualifications,
-  challengeBestTimes: storedProgress.challengeBestTimes
+  challengeBestTimes: storedProgress.challengeBestTimes,
+  puzzleReviews: storedProgress.puzzleReviews,
+  techniqueUsage: storedProgress.techniqueUsage
 };
 const initialChallengeNumber = getNextChallengeNumber(learningProfile.completedPuzzles, qualifiedLevelsFrom(learningProfile.levelQualifications)) || TOTAL_CHALLENGES;
 const initialChallenge = getChallenge(initialChallengeNumber);
@@ -96,6 +115,7 @@ const state = {
   title: '',
   sessionId: '',
   activeLesson: null,
+  sessionStats: { hints: 0, stalls: 0, usedTechniques: [] },
   solvedCount: Number(storedProgress.solvedCount || 0),
   learning: learningProfile,
   generatorDifficulty: 'easy',
@@ -117,14 +137,14 @@ function persistProgress() {
     analysesRun: state.learning.analysesRun,
     lessonResults: state.learning.lessonResults,
     levelQualifications: state.learning.levelQualifications,
-    challengeBestTimes: state.learning.challengeBestTimes
+    challengeBestTimes: state.learning.challengeBestTimes,
+    puzzleReviews: state.learning.puzzleReviews,
+    techniqueUsage: state.learning.techniqueUsage
   });
 }
 
 function lessonResult(id) {
-  if (!state.learning.lessonResults[id]) {
-    state.learning.lessonResults[id] = { knowledgePassed: false, passedQuestionIds: [], attempts: 0, firstTryCorrect: 0, hintsUsed: 0 };
-  }
+  state.learning.lessonResults[id] = normalizeLessonResult(state.learning.lessonResults[id]);
   return state.learning.lessonResults[id];
 }
 
@@ -141,7 +161,8 @@ function persistSession() {
     elapsed: state.elapsed,
     completed: state.completed,
     activeDrill: state.activeDrill?.technique || null,
-    startedAt: state.startedAt
+    startedAt: state.startedAt,
+    sessionStats: state.sessionStats
   });
 }
 
@@ -687,6 +708,24 @@ function completePuzzle() {
   confirmTrials(state.trial);
   state.completed = true;
   state.solvedCount += 1;
+  const reviewAnalysis = analyzePuzzle(state.record.puzzle);
+  const puzzleReview = createPuzzleReview({
+    id: state.sessionId,
+    title: state.title,
+    elapsed: state.elapsed,
+    hints: state.sessionStats.hints,
+    stalls: state.sessionStats.stalls,
+    analysis: reviewAnalysis,
+    usedTechniques: state.sessionStats.usedTechniques
+  });
+  state.learning.puzzleReviews.unshift(puzzleReview);
+  state.learning.puzzleReviews = state.learning.puzzleReviews.slice(0, 30);
+  puzzleReview.techniques.forEach(({ technique, count }) => {
+    const usage = state.learning.techniqueUsage[technique] || { encountered: 0, hinted: 0 };
+    usage.encountered += count;
+    if (puzzleReview.usedTechniques.includes(technique)) usage.hinted += 1;
+    state.learning.techniqueUsage[technique] = usage;
+  });
   const challengeNumber = state.record.challengeNumber || challengeNumberFromId(state.record.bankId);
   const firstClear = Boolean(state.record.bankId && !state.learning.completedPuzzles.has(state.record.bankId));
   if (state.record.bankId) state.learning.completedPuzzles.add(state.record.bankId);
@@ -720,6 +759,13 @@ function completePuzzle() {
   }
   if (state.activeDrill) {
     state.learning.completedDrills.add(state.activeDrill.technique);
+    const drillLesson = ALL_LESSONS.find((lesson) => assessmentTechnique(lesson) === state.activeDrill.technique);
+    if (drillLesson) {
+      const result = lessonResult(drillLesson.id);
+      result.transferPassed = true;
+      state.learning.lessonResults[drillLesson.id] = scheduleReview(result, { correct: true });
+      syncLessonCompletion(drillLesson);
+    }
     recordActivity('drill', `通過「${strategyNames[state.activeDrill.technique]}」專項考題，用時 ${formatTime(state.elapsed)}`);
     setCoach('專項完成', `已通過「${strategyNames[state.activeDrill.technique]}」考題`, `你用 ${formatTime(state.elapsed)} 完成這題。`, '回想指定技巧出現時，候選數為何能被排除或確定。');
   } else {
@@ -767,6 +813,7 @@ function completePuzzle() {
 }
 
 function requestHint() {
+  state.sessionStats.stalls += 1;
   const validation = updateValidation();
   if (!validation.valid) {
     setCoach('先修正衝突', '盤面中有重複數字', '紅色格子位於同一橫列、直行或九宮，請先修正後再分析。');
@@ -785,6 +832,7 @@ function requestHint() {
   }
   state.suggestions = result.suggestions;
   focusSuggestion(result.suggestions[0]);
+  state.sessionStats.hints += 1;
   state.learning.hintsUsed += 1;
   const techniques = [...new Set(result.suggestions.map((step) => strategyNames[step.strategy] || step.strategy))];
   recordActivity('hint', `分析 ${result.suggestions.length} 個下一手：${techniques.join('、')}`);
@@ -794,6 +842,7 @@ function requestHint() {
 function applyHint() {
   if (!state.hint || state.hint.kind !== 'placement') return;
   const applied = state.hint;
+  if (!state.sessionStats.usedTechniques.includes(applied.strategy)) state.sessionStats.usedTechniques.push(applied.strategy);
   state.notesMode = false;
   state.selected = applied.index;
   enterNumber(applied.digit);
@@ -830,6 +879,7 @@ function loadPuzzle(record, title = '', { persist = true } = {}) {
   state.elapsed = 0;
   state.completed = false;
   state.activeDrill = null;
+  state.sessionStats = { hints: 0, stalls: 0, usedTechniques: [] };
   state.title = title || record.title || `${record.seed} · ${record.clues} 個線索`;
   state.sessionId = `${record.seed || 'PUZZLE'}-${Date.now()}`;
   state.startedAt = new Date().toISOString();
@@ -861,6 +911,11 @@ function restoreSession(session) {
   state.elapsed = Number(session.elapsed || 0);
   state.completed = Boolean(session.completed);
   state.activeDrill = session.activeDrill ? DRILL_BY_TECHNIQUE.get(session.activeDrill) || null : null;
+  state.sessionStats = {
+    hints: Number(session.sessionStats?.hints || 0),
+    stalls: Number(session.sessionStats?.stalls || 0),
+    usedTechniques: Array.isArray(session.sessionStats?.usedTechniques) ? session.sessionStats.usedTechniques : []
+  };
   state.title = session.title || `${session.record.seed} · 繼續作答`;
   state.sessionId = session.id || `${session.record.seed || 'PUZZLE'}-${Date.now()}`;
   state.startedAt = session.startedAt || new Date().toISOString();
@@ -939,26 +994,36 @@ function runAnalysis() {
 function syncLessonCompletion(lesson) {
   const result = lessonResult(lesson.id);
   const technique = assessmentTechnique(lesson);
-  const questionCount = technique ? getTechniqueQuestions(technique, 3).length : 0;
-  const passed = result.knowledgePassed && (!questionCount || result.passedQuestionIds.length >= questionCount);
+  const questionCount = technique ? getTechniqueQuestions(technique, 12).length : 0;
+  const reasonTarget = Math.min(6, Math.max(0, questionCount - 1));
+  const passed = result.knowledgePassed && (!questionCount || (
+    result.reasonPassedQuestionIds.length >= reasonTarget
+    && result.discriminationPassedIds.length >= Math.min(3, getDiscriminationQuestions(technique, 4).length)
+    && result.transferPassed
+  ));
   if (passed && !state.learning.completedLessons.has(lesson.id)) {
     state.learning.completedLessons.add(lesson.id);
-    recordActivity('lesson', `通過課程「${lesson.name}」${questionCount ? `與 ${questionCount} 題定點考試` : '理解檢核'}`);
+    state.learning.lessonResults[lesson.id] = scheduleReview(result, { correct: true });
+    recordActivity('lesson', `通過課程「${lesson.name}」${questionCount ? '的辨識、定點推理與遷移考核' : '理解檢核'}`);
   } else persistProgress();
   return passed;
 }
 
-function openLesson(id) {
+function openLesson(id, phase = 'worked') {
   const lesson = ALL_LESSONS.find((item) => item.id === id);
   if (!lesson) return;
   state.activeLesson = {
     id,
-    questionIndex: 0,
+    phase,
+    questionIndex: phase === 'target' ? 4 : phase === 'transfer' ? 11 : phase === 'scaffold' ? 1 : 0,
+    discriminationIndex: 0,
     selected: -1,
-    mode: 'guided',
     hintLevel: 0,
     answered: false,
+    pendingMove: null,
     feedback: '',
+    reasonFeedback: '',
+    discriminationFeedback: '',
     attemptsByQuestion: {},
     knowledgeFeedback: ''
   };
@@ -966,20 +1031,82 @@ function openLesson(id) {
   byId('lesson-workbench').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function assessmentCell(question, index, active) {
+const LESSON_PHASES = Object.freeze([
+  { id: 'worked', number: 1, label: '動態示範' },
+  { id: 'scaffold', number: 2, label: '半引導練習' },
+  { id: 'target', number: 3, label: '定點考試' },
+  { id: 'discriminate', number: 4, label: '混合辨識' },
+  { id: 'transfer', number: 5, label: '無提示遷移' }
+]);
+
+function assessmentCell(question, index, active, revealLevel = 0, showTarget = true) {
   const value = question.board[index];
   const candidates = question.candidates[index] || [];
-  const related = active.hintLevel >= 1 && question.related.includes(index);
-  const target = (active.answered || active.hintLevel >= 2) && question.answers.some((answer) => answer.index === index);
+  const related = revealLevel >= 1 && question.related.includes(index);
+  const target = showTarget && (active.answered || revealLevel >= 2) && question.answers.some((answer) => answer.index === index);
+  const visualNode = revealLevel >= 1 ? question.visual?.nodes.find((node) => node.index === index) : null;
+  const focusDigit = visualNode?.digit;
   const classes = ['assessment-cell'];
   if (value) classes.push('given');
   if (index === active.selected) classes.push('selected');
   if (related) classes.push('related');
   if (target) classes.push('target');
+  if (visualNode) classes.push(`logic-${visualNode.color}`);
   const content = value
     ? `<b>${value}</b>`
-    : `<span>${Array.from({ length: 9 }, (_, digit) => `<i>${candidates.includes(digit + 1) ? digit + 1 : ''}</i>`).join('')}</span>`;
+    : `<span>${Array.from({ length: 9 }, (_, digit) => `<i class="${focusDigit === digit + 1 ? 'focus-candidate' : ''}">${candidates.includes(digit + 1) ? digit + 1 : ''}</i>`).join('')}</span>`;
   return `<button type="button" class="${classes.join(' ')}" data-assessment-cell="${index}" aria-label="${cellName(index)}">${content}</button>`;
+}
+
+function assessmentVisualMarkup(question, revealLevel) {
+  if (revealLevel < 1 || !question.visual) return '';
+  const center = (index) => ({ x: (index % 9) * 100 + 50, y: Math.floor(index / 9) * 100 + 50 });
+  const fish = question.visual.fish;
+  const fishLines = fish ? [
+    ...fish.rows.map((row) => `<rect class="fish-base" x="0" y="${row * 100 + 3}" width="900" height="94" rx="10"/>`),
+    ...fish.cols.map((col) => `<rect class="fish-cover" x="${col * 100 + 3}" y="0" width="94" height="900" rx="10"/>`)
+  ].join('') : '';
+  const links = question.visual.links.map((link) => {
+    const from = center(link.from); const to = center(link.to);
+    return `<line class="logic-link ${link.type}" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"/>`;
+  }).join('');
+  const nodes = question.visual.nodes.map((node) => {
+    const point = center(node.index);
+    return `<circle class="logic-node ${node.role} ${node.color}" cx="${point.x}" cy="${point.y}" r="30"/>`;
+  }).join('');
+  const groups = question.visual.groups.map((group) => {
+    const point = center(group.index);
+    return `<rect class="logic-group" x="${point.x - 43}" y="${point.y - 43}" width="86" height="86" rx="12"/>`;
+  }).join('');
+  return `<svg class="assessment-overlay" viewBox="0 0 900 900" aria-hidden="true">${fishLines}${links}${groups}${nodes}</svg>`;
+}
+
+function assessmentBoardMarkup(question, active, revealLevel = 0, showTarget = true) {
+  return `<div class="assessment-board-wrap"><div class="assessment-board">${question.board.map((_, index) => assessmentCell(question, index, active, revealLevel, showTarget)).join('')}</div>${assessmentVisualMarkup(question, revealLevel)}</div>`;
+}
+
+function resetLessonInteraction(active) {
+  active.selected = -1;
+  active.hintLevel = 0;
+  active.usedHint = false;
+  active.answered = false;
+  active.pendingMove = null;
+  active.feedback = '';
+  active.reasonFeedback = '';
+  active.discriminationFeedback = '';
+}
+
+function questionExerciseMarkup({ lesson, question, active, result, revealLevel, phaseLabel, position, total, allowHint = false }) {
+  const passed = result.reasonPassedQuestionIds.includes(question.id);
+  const reasoning = active.pendingMove || active.answered
+    ? `<div class="reason-check"><b>第二步：為什麼這個動作成立？</b><div class="reason-choices">${question.reasonChoices.map((choice) => `<button type="button" data-reason-answer="${choice.id}" ${active.answered ? 'disabled' : ''}>${choice.text}</button>`).join('')}</div>${active.reasonFeedback ? `<p>${active.reasonFeedback}</p>` : ''}</div>`
+    : '';
+  const explanation = active.answered || revealLevel >= 3
+    ? `<div class="answer-explanation"><b>完整推理</b><p>${question.explanation}</p><small>${question.answerSummary}</small></div>`
+    : '';
+  return `<div class="assessment-head"><div><span>${phaseLabel} · ${position}/${total}</span><h3>${question.prompt}</h3><p>${question.instruction}</p></div><span class="question-source ${question.sourceKind === 'independent' ? 'independent' : ''}">${question.variantLabel}</span></div>
+    <div class="assessment-layout"><div>${assessmentBoardMarkup(question, active, revealLevel)}<div class="assessment-pad">${[1,2,3,4,5,6,7,8,9].map((digit) => `<button type="button" data-assessment-digit="${digit}" ${active.pendingMove || active.answered ? 'disabled' : ''}>${digit}</button>`).join('')}</div></div>
+    <aside class="assessment-coach"><span>${passed ? '已通過此題' : '尚未通過'} · 必須同時答對動作與理由</span><p>${revealLevel >= 2 ? '已標出目標；請把注意力放在推理條件。' : revealLevel === 1 ? '已標出關聯格，但不會顯示答案位置。' : `無標記作答。觀察口訣：${lesson.cue}`}</p>${active.feedback ? `<div class="assessment-feedback">${active.feedback}</div>` : ''}${reasoning}${explanation}<div class="assessment-actions">${allowHint && !active.answered ? `<button type="button" data-assessment-hint>${revealLevel === 0 ? '提示：顯示關聯格' : revealLevel === 1 ? '再提示：顯示目標格' : '提示已完整顯示'}</button>` : ''}<button type="button" data-assessment-prev>上一題</button><button type="button" data-assessment-next>下一題</button></div></aside></div>`;
 }
 
 function renderLessonWorkbench() {
@@ -994,20 +1121,57 @@ function renderLessonWorkbench() {
   if (!lesson || !content) return;
   const result = lessonResult(lesson.id);
   const technique = assessmentTechnique(lesson);
-  const questions = technique ? getTechniqueQuestions(technique, 3) : [];
-  const question = questions[active.questionIndex] || null;
+  const questions = technique ? getTechniqueQuestions(technique, 12) : [];
+  const discrimination = technique ? getDiscriminationQuestions(technique, 4) : [];
+  const dimensions = computeSkillDimensions(result);
   const checkMarkup = `<div class="knowledge-check"><span>理解檢核</span><h3>${content.check.prompt}</h3><div class="choice-list">${content.check.choices.map((choice, index) => `<button type="button" data-check-answer="${index}">${choice}</button>`).join('')}</div>${active.knowledgeFeedback ? `<p class="check-feedback">${active.knowledgeFeedback}</p>` : ''}${result.knowledgePassed ? '<b class="pass-note">✓ 已通過理解檢核</b>' : ''}</div>`;
-  let assessmentMarkup = '<div class="assessment-empty"><b>本節為觀念教材</b><p>完成理解檢核即可通過；本節不另設指定位置考題。</p></div>';
-  if (question) {
-    const passedCount = result.passedQuestionIds.filter((id) => questions.some((item) => item.id === id)).length;
-    assessmentMarkup = `<div class="assessment-head"><div><span>定點判讀 · ${active.questionIndex + 1}/${questions.length}</span><h3>${question.prompt}</h3><p>${question.instruction}</p></div><div class="mode-switch"><button type="button" data-assessment-mode="guided" class="${active.mode === 'guided' ? 'active' : ''}">教學</button><button type="button" data-assessment-mode="exam" class="${active.mode === 'exam' ? 'active' : ''}">考試</button></div></div>
-      <div class="assessment-layout"><div><div class="assessment-board">${question.board.map((_, index) => assessmentCell(question, index, active)).join('')}</div><div class="assessment-pad">${[1,2,3,4,5,6,7,8,9].map((digit) => `<button type="button" data-assessment-digit="${digit}">${digit}</button>`).join('')}</div></div>
-      <aside class="assessment-coach"><span>${question.variantLabel} · 已通過 ${passedCount}/${questions.length}</span><p>${active.mode === 'guided' ? `觀察口訣：${lesson.cue}` : '考試模式不顯示提示；請獨立完成一次判讀。'}</p>${active.feedback ? `<div class="assessment-feedback">${active.feedback}</div>` : ''}<div class="assessment-actions">${active.mode === 'guided' && !active.answered ? `<button type="button" data-assessment-hint>${active.hintLevel === 0 ? '提示：標出關聯格' : '再提示：標出答案格'}</button>` : ''}<button type="button" data-assessment-next>下一題</button></div>${active.answered || active.hintLevel >= 2 ? `<div class="answer-explanation"><b>推理說明</b><p>${question.explanation}</p><small>${question.answerSummary}</small></div>` : ''}</aside></div>`;
+  const phaseNav = questions.length ? `<nav class="lesson-phase-nav" aria-label="五階段學習">${LESSON_PHASES.map((phase) => `<button type="button" data-lesson-phase="${phase.id}" class="${active.phase === phase.id ? 'active' : ''}"><i>${phase.number}</i><span>${phase.label}</span></button>`).join('')}</nav>` : '';
+  let phaseMarkup = `<div class="assessment-empty"><b>本節為基礎觀念教材</b><p>讀完原理、例題與陷阱，再完成理解檢核即可通過。</p></div>${checkMarkup}`;
+  let activeQuestion = null;
+
+  if (questions.length && active.phase === 'worked') {
+    const question = questions[0];
+    activeQuestion = question;
+    const workedStep = Number(active.workedStep || 0);
+    const workedCopy = [
+      '先不找答案：辨認題目要觀察的候選數與單位。',
+      '現在顯示建立結論的關聯格與連結；逐一核對技巧條件。',
+      '現在標出結論位置；先自己說出填入或排除的理由。',
+      question.explanation
+    ][workedStep];
+    phaseMarkup = `<div class="phase-intro"><span>STAGE 1 · WORKED EXAMPLE</span><h3>動態示範：一次只揭露一層</h3><p>${workedCopy}</p></div><div class="assessment-layout"><div>${assessmentBoardMarkup(question, active, workedStep, true)}</div><aside class="assessment-coach"><span>${question.variantLabel}</span><p>${question.prompt}</p>${workedStep >= 3 ? `<div class="answer-explanation"><b>完整推理</b><p>${question.explanation}</p><small>${question.answerSummary}</small></div>` : ''}<div class="assessment-actions"><button type="button" data-worked-next>${workedStep < 3 ? '揭示下一步' : '進入半引導練習'}</button></div></aside></div>${checkMarkup}`;
+  } else if (questions.length && ['scaffold', 'target', 'transfer'].includes(active.phase)) {
+    const range = active.phase === 'scaffold' ? [1, Math.min(3, questions.length - 1)] : active.phase === 'target' ? [4, Math.min(10, questions.length - 1)] : [Math.min(11, questions.length - 1), Math.min(11, questions.length - 1)];
+    if (active.questionIndex < range[0] || active.questionIndex > range[1]) active.questionIndex = range[0];
+    const question = questions[active.questionIndex];
+    activeQuestion = question;
+    const autoSupport = hintSupportFor(result, active.phase, active.questionIndex);
+    const revealLevel = active.phase === 'transfer' ? 0 : Math.max(autoSupport, active.hintLevel);
+    const label = active.phase === 'scaffold' ? 'STAGE 2 · 半引導練習' : active.phase === 'target' ? 'STAGE 3 · 指定位置考試' : 'STAGE 5 · 無提示遷移考';
+    const exercise = questionExerciseMarkup({ lesson, question, active, result, revealLevel, phaseLabel: label, position: active.questionIndex - range[0] + 1, total: range[1] - range[0] + 1, allowHint: active.phase === 'scaffold' });
+    const transferAction = active.phase === 'transfer' && DRILL_BY_TECHNIQUE.get(technique) ? `<div class="transfer-action"><div><b>再往前一步：完整盤面專項</b><p>從初始題目解到完成，檢查你能否在沒有標記的情況下自己遇見這個技巧。</p></div><button type="button" data-transfer-drill="${technique}">${result.transferPassed ? '再做完整盤面' : '開始完整盤面'}</button></div>` : '';
+    phaseMarkup = `<div class="phase-intro"><span>${label}</span><h3>${active.phase === 'scaffold' ? '提示會逐題淡出' : active.phase === 'target' ? '先找位置，再證明理由' : '沒有關聯格、沒有答案提示'}</h3><p>${active.phase === 'scaffold' ? '第 1 題顯示答案區域，第 2 題只顯示關聯，第 3 題完全不標記；需要時仍可主動求助。' : active.phase === 'target' ? '每題必須完成「動作＋理由」兩段作答，猜中位置不算通過。' : '這題使用完整候選盤面但移除所有教學標記，檢查能否把技巧遷移到新情境。'}</p></div>${exercise}${transferAction}`;
+  } else if (questions.length && active.phase === 'discriminate') {
+    if (active.discriminationIndex >= discrimination.length) active.discriminationIndex = 0;
+    const item = discrimination[active.discriminationIndex];
+    activeQuestion = item.sourceQuestion;
+    const passed = result.discriminationPassedIds.includes(item.id);
+    phaseMarkup = `<div class="phase-intro"><span>STAGE 4 · MIXED DISCRIMINATION</span><h3>先辨識技巧，也要能判斷「不是它」</h3><p>只判斷盤面上標示的候選結構；其他位置即使另有技巧，也不影響本題。</p></div><div class="assessment-head"><div><span>混合辨識 · ${active.discriminationIndex + 1}/${discrimination.length}</span><h3>${item.prompt}</h3></div><span class="question-source">${item.sourceQuestion.variantLabel}</span></div><div class="assessment-layout"><div class="noninteractive-board">${assessmentBoardMarkup(item.sourceQuestion, active, 1, false)}</div><aside class="assessment-coach"><span>${passed ? '已通過此題' : '選出最精確的判斷'}</span><div class="discrimination-choices">${item.choices.map((choice) => `<button type="button" data-discrimination-answer="${choice.id}">${choice.technique ? strategyNames[choice.technique] || choice.technique : '條件不足／以上皆非'}</button>`).join('')}</div>${active.discriminationFeedback ? `<div class="assessment-feedback">${active.discriminationFeedback}</div>` : ''}<div class="assessment-actions"><button type="button" data-discrimination-prev>上一題</button><button type="button" data-discrimination-next>下一題</button></div></aside></div>`;
   }
+
+  const masteryMarkup = `<div class="lesson-mastery-strip">${[['理解', dimensions.understanding], ['辨識', dimensions.recognition], ['執行', dimensions.execution], ['遷移', dimensions.transfer], ['保留', dimensions.retention]].map(([label, value]) => `<div><span>${label}</span><b>${value}</b><i style="--score:${value}%"></i></div>`).join('')}</div>`;
   panel.hidden = false;
-  panel.innerHTML = `<header class="workbench-title"><div><span>${lesson.stageTitle} · 完整教學</span><h2>${lesson.name}</h2></div><button type="button" data-lesson-close aria-label="關閉教材">×</button></header><div class="tutorial-grid"><article><b>核心原理</b><p>${content.principle}</p></article><article><b>判讀三步</b><ol>${content.steps.map((step) => `<li>${step}</li>`).join('')}</ol></article><article><b>完整例題</b><p>${content.example}</p></article><article class="pitfall"><b>常見陷阱</b><p>${content.pitfall}</p></article></div>${checkMarkup}<section class="target-assessment"><div class="target-intro"><span>TARGETED ASSESSMENT</span><h2>指定位置判讀</h2><p>不是把整題做完才算練習：直接判斷哪一格能填入、或哪個候選能排除。</p></div>${assessmentMarkup}</section>`;
+  panel.innerHTML = `<header class="workbench-title"><div><span>${lesson.stageTitle} · 五階段精熟課程</span><h2>${lesson.name}</h2></div><button type="button" data-lesson-close aria-label="關閉教材">×</button></header>${phaseNav}${masteryMarkup}<div class="tutorial-grid"><article><b>核心原理</b><p>${content.principle}</p></article><article><b>判讀三步</b><ol>${content.steps.map((step) => `<li>${step}</li>`).join('')}</ol></article><article><b>完整例題</b><p>${content.example}</p></article><article class="pitfall"><b>常見陷阱</b><p>${content.pitfall}</p></article></div><section class="target-assessment">${phaseMarkup}</section>`;
 
   panel.querySelector('[data-lesson-close]').addEventListener('click', () => { state.activeLesson = null; panel.hidden = true; });
+  panel.querySelectorAll('[data-lesson-phase]').forEach((button) => button.addEventListener('click', () => {
+    active.phase = button.dataset.lessonPhase;
+    if (active.phase === 'scaffold') active.questionIndex = 1;
+    if (active.phase === 'target') active.questionIndex = 4;
+    if (active.phase === 'transfer') active.questionIndex = Math.min(11, questions.length - 1);
+    resetLessonInteraction(active);
+    renderLessonWorkbench();
+  }));
   panel.querySelectorAll('[data-check-answer]').forEach((button) => button.addEventListener('click', () => {
     const correct = Number(button.dataset.checkAnswer) === content.check.answer;
     active.knowledgeFeedback = `${correct ? '答對：' : '再想一次：'}${content.check.explanation}`;
@@ -1015,57 +1179,88 @@ function renderLessonWorkbench() {
     syncLessonCompletion(lesson);
     renderLessonWorkbench();
   }));
-  panel.querySelectorAll('[data-assessment-cell]').forEach((button) => button.addEventListener('click', () => {
-    active.selected = Number(button.dataset.assessmentCell);
-    active.feedback = `已選 ${cellName(active.selected)}，現在選擇要${question.kind === 'placement' ? '填入' : '排除'}的數字。`;
+  panel.querySelector('[data-worked-next]')?.addEventListener('click', () => {
+    if (Number(active.workedStep || 0) < 3) active.workedStep = Number(active.workedStep || 0) + 1;
+    else { active.phase = 'scaffold'; active.questionIndex = 1; resetLessonInteraction(active); }
     renderLessonWorkbench();
-  }));
-  panel.querySelectorAll('[data-assessment-digit]').forEach((button) => button.addEventListener('click', () => {
-    if (active.selected < 0) { active.feedback = '請先點選一個目標格。'; return renderLessonWorkbench(); }
-    const attempts = active.attemptsByQuestion[question.id] || 0;
-    const correct = evaluateTechniqueAnswer(question, active.selected, Number(button.dataset.assessmentDigit));
-    result.attempts += 1;
-    if (correct) {
-      const firstTry = attempts === 0 && !active.usedHint;
-      active.answered = true;
-      active.hintLevel = 2;
-      active.feedback = `答對：${cellName(active.selected)} ${question.kind === 'placement' ? '填入' : '排除'} ${button.dataset.assessmentDigit}。`;
-      if (!result.passedQuestionIds.includes(question.id)) {
-        result.passedQuestionIds.push(question.id);
-        if (firstTry) result.firstTryCorrect += 1;
+  });
+  if (activeQuestion && ['scaffold', 'target', 'transfer'].includes(active.phase)) {
+    panel.querySelectorAll('[data-assessment-cell]').forEach((button) => button.addEventListener('click', () => {
+      if (active.pendingMove || active.answered) return;
+      active.selected = Number(button.dataset.assessmentCell);
+      active.feedback = `已選 ${cellName(active.selected)}，現在選擇要${activeQuestion.kind === 'placement' ? '填入' : '排除'}的數字。`;
+      renderLessonWorkbench();
+    }));
+    panel.querySelectorAll('[data-assessment-digit]').forEach((button) => button.addEventListener('click', () => {
+      if (active.selected < 0) { active.feedback = '請先點選一個目標格。'; return renderLessonWorkbench(); }
+      const attempts = active.attemptsByQuestion[activeQuestion.id] || 0;
+      const digit = Number(button.dataset.assessmentDigit);
+      result.attempts += 1;
+      if (evaluateTechniqueAnswer(activeQuestion, active.selected, digit)) {
+        active.pendingMove = { index: active.selected, digit, firstTry: attempts === 0 && !active.usedHint };
+        active.feedback = `動作正確：${cellName(active.selected)} ${activeQuestion.kind === 'placement' ? '填入' : '排除'} ${digit}。還要選對成立理由才算通過。`;
+      } else {
+        active.attemptsByQuestion[activeQuestion.id] = attempts + 1;
+        const diagnostic = diagnoseTechniqueAnswer(activeQuestion, active.selected, digit);
+        Object.assign(result, recordDiagnostic(result, diagnostic.code));
+        active.feedback = `<b>${diagnostic.title}</b><br>${diagnostic.message}`;
       }
-    } else {
-      active.attemptsByQuestion[question.id] = attempts + 1;
-      active.feedback = '這個動作不是本步可證明的答案；回到技巧條件逐項核對。';
-    }
-    syncLessonCompletion(lesson);
-    renderLessonWorkbench();
-  }));
-  panel.querySelectorAll('[data-assessment-mode]').forEach((button) => button.addEventListener('click', () => {
-    active.mode = button.dataset.assessmentMode;
-    active.hintLevel = 0;
-    active.usedHint = false;
-    active.feedback = '';
-    renderLessonWorkbench();
-  }));
-  panel.querySelector('[data-assessment-hint]')?.addEventListener('click', () => {
-    active.hintLevel = Math.min(2, active.hintLevel + 1);
-    active.usedHint = true;
-    result.hintsUsed += 1;
-    state.learning.hintsUsed += 1;
-    active.feedback = active.hintLevel === 1 ? '已標出建立這一步的關聯格。' : `答案位置已標出；請再說出理由：${question.explanation}`;
-    persistProgress();
-    renderLessonWorkbench();
-  });
-  panel.querySelector('[data-assessment-next]')?.addEventListener('click', () => {
-    active.questionIndex = (active.questionIndex + 1) % questions.length;
-    active.selected = -1;
-    active.hintLevel = 0;
-    active.usedHint = false;
-    active.answered = false;
-    active.feedback = '';
-    renderLessonWorkbench();
-  });
+      persistProgress();
+      renderLessonWorkbench();
+    }));
+    panel.querySelectorAll('[data-reason-answer]').forEach((button) => button.addEventListener('click', () => {
+      result.reasonAttempts += 1;
+      if (evaluateReasonAnswer(activeQuestion, button.dataset.reasonAnswer)) {
+        active.answered = true;
+        active.reasonFeedback = '理由正確。你已同時完成位置判讀與邏輯證明。';
+        if (!result.passedQuestionIds.includes(activeQuestion.id)) result.passedQuestionIds.push(activeQuestion.id);
+        if (!result.reasonPassedQuestionIds.includes(activeQuestion.id)) {
+          result.reasonPassedQuestionIds.push(activeQuestion.id);
+          if (active.pendingMove?.firstTry) result.firstTryCorrect += 1;
+        }
+        if (active.phase === 'transfer') result.transferPassed = true;
+        if (isReviewDue(result)) Object.assign(result, scheduleReview(result, { correct: true }));
+      } else {
+        Object.assign(result, recordDiagnostic(result, 'technique-confusion'));
+        active.reasonFeedback = '理由不成立：它漏掉了必要條件，或把另一種技巧的規則套在這裡。請逐項核對強連結、可見關係與候選集合。';
+      }
+      syncLessonCompletion(lesson);
+      renderLessonWorkbench();
+    }));
+    panel.querySelector('[data-assessment-hint]')?.addEventListener('click', () => {
+      const shown = Math.max(hintSupportFor(result, active.phase, active.questionIndex), active.hintLevel);
+      active.hintLevel = Math.min(2, shown + 1);
+      active.usedHint = true;
+      result.hintsUsed += 1;
+      state.learning.hintsUsed += 1;
+      active.feedback = active.hintLevel === 1 ? '已標出建立這一步的關聯格。' : '已標出答案區域；請仍自行完成動作與理由。';
+      persistProgress();
+      renderLessonWorkbench();
+    });
+    const range = active.phase === 'scaffold' ? [1, Math.min(3, questions.length - 1)] : active.phase === 'target' ? [4, Math.min(10, questions.length - 1)] : [Math.min(11, questions.length - 1), Math.min(11, questions.length - 1)];
+    panel.querySelector('[data-assessment-prev]')?.addEventListener('click', () => {
+      active.questionIndex = active.questionIndex <= range[0] ? range[1] : active.questionIndex - 1;
+      resetLessonInteraction(active); renderLessonWorkbench();
+    });
+    panel.querySelector('[data-assessment-next]')?.addEventListener('click', () => {
+      active.questionIndex = active.questionIndex >= range[1] ? range[0] : active.questionIndex + 1;
+      resetLessonInteraction(active); renderLessonWorkbench();
+    });
+  }
+  if (active.phase === 'discriminate' && discrimination.length) {
+    const item = discrimination[active.discriminationIndex];
+    panel.querySelectorAll('[data-discrimination-answer]').forEach((button) => button.addEventListener('click', () => {
+      result.discriminationAttempts += 1;
+      const correct = evaluateDiscriminationAnswer(item, button.dataset.discriminationAnswer);
+      active.discriminationFeedback = correct ? `判讀正確。${item.explanation}` : `這個判讀混淆了技巧條件。${item.actualTechnique ? `標示結構實際是「${strategyNames[item.actualTechnique] || item.actualTechnique}」。` : '三個列出的技巧都缺少必要條件。'}`;
+      if (correct && !result.discriminationPassedIds.includes(item.id)) result.discriminationPassedIds.push(item.id);
+      if (!correct) Object.assign(result, recordDiagnostic(result, 'technique-confusion'));
+      syncLessonCompletion(lesson); renderLessonWorkbench();
+    }));
+    panel.querySelector('[data-discrimination-prev]')?.addEventListener('click', () => { active.discriminationIndex = (active.discriminationIndex + discrimination.length - 1) % discrimination.length; resetLessonInteraction(active); renderLessonWorkbench(); });
+    panel.querySelector('[data-discrimination-next]')?.addEventListener('click', () => { active.discriminationIndex = (active.discriminationIndex + 1) % discrimination.length; resetLessonInteraction(active); renderLessonWorkbench(); });
+  }
+  panel.querySelector('[data-transfer-drill]')?.addEventListener('click', () => startTechniqueDrill(technique));
 }
 
 function renderResumeCard(session) {
@@ -1088,6 +1283,62 @@ function renderResumeCard(session) {
   });
 }
 
+const SKILL_DIMENSIONS = Object.freeze([
+  ['understanding', '理解原理'],
+  ['recognition', '辨識技巧'],
+  ['execution', '執行推理'],
+  ['transfer', '無提示遷移'],
+  ['retention', '間隔保留']
+]);
+
+function reviewDateLabel(value) {
+  if (!value) return '尚未排程';
+  const date = new Date(value);
+  const due = date.getTime() <= Date.now();
+  const label = date.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
+  return due ? `今天到期 · 原排 ${label}` : `${label} 複習`;
+}
+
+function puzzleReviewRecommendation(review) {
+  if (!review.logicalOnly) return '目前技巧庫無法完整邏輯解出；先看前段可解步驟，不把搜尋驗證當技巧。';
+  if (review.hints >= 2 || review.stalls >= 3) return '這題曾多次卡住；建議隔天重做，先自己找下一手，再開提示核對。';
+  if (review.hints === 1 || review.stalls > 0) return '整體已完成，但有一次求助或停滯；挑同技巧新題做無提示遷移。';
+  return '這次解題流暢；下一步可提高一級，或用理由模式口述最難的一手。';
+}
+
+function renderLearningInsights() {
+  const targetResults = TARGETED_LESSONS.map((lesson) => lessonResult(lesson.id));
+  const dimensions = aggregateSkillDimensions(targetResults);
+  const skillMap = byId('skill-map');
+  if (skillMap) {
+    skillMap.innerHTML = SKILL_DIMENSIONS.map(([key, label]) => `<div class="skill-dimension"><span>${label}</span><div><i style="--score:${dimensions[key]}%"></i></div><b>${dimensions[key]}</b></div>`).join('');
+  }
+
+  const scheduled = ALL_LESSONS
+    .map((lesson) => ({ lesson, result: lessonResult(lesson.id) }))
+    .filter(({ result }) => result.nextReviewAt)
+    .sort((a, b) => new Date(a.result.nextReviewAt) - new Date(b.result.nextReviewAt));
+  const due = scheduled.filter(({ result }) => isReviewDue(result));
+  const dueCount = byId('review-due-count');
+  if (dueCount) dueCount.textContent = `${due.length} 課待複習`;
+  const queue = byId('review-queue');
+  if (queue) {
+    queue.innerHTML = scheduled.length
+      ? scheduled.slice(0, 6).map(({ lesson, result }) => `<button type="button" class="review-item ${isReviewDue(result) ? 'due' : ''}" data-review-open="${lesson.id}"><span>${reviewDateLabel(result.nextReviewAt)}</span><b>${lesson.name}</b><small>第 ${Math.min(4, result.reviewStage)} / 4 輪 · 1、3、7、21 天</small></button>`).join('')
+      : '<p class="insight-empty">完成一門五階課程後，會從隔天開始安排 1、3、7、21 天複習。</p>';
+  }
+
+  const reviewList = byId('puzzle-review-list');
+  if (reviewList) {
+    reviewList.innerHTML = state.learning.puzzleReviews.length
+      ? state.learning.puzzleReviews.slice(0, 6).map((review) => {
+        const techniques = review.techniques.slice(0, 4).map(({ technique, count }) => `${strategyNames[technique] || technique} × ${count}`).join(' · ') || '未辨識到已實作邏輯技巧';
+        return `<article><div><span>${new Date(review.completedAt).toLocaleDateString('zh-TW')} · ${formatTime(review.elapsed)}</span><h3>${review.title}</h3></div><p><b>題目路徑：</b>${techniques}</p><p><b>學習訊號：</b>提示 ${review.hints} 次 · 卡住 ${review.stalls} 次</p><small>${puzzleReviewRecommendation(review)}</small></article>`;
+      }).join('')
+      : '<p class="insight-empty">完成一題後，這裡會整理時間、提示、卡住次數、實際技巧與下一步建議。</p>';
+  }
+}
+
 function renderJourney() {
   const container = byId('journey-stages');
   if (!container) return;
@@ -1097,8 +1348,8 @@ function renderJourney() {
   byId('lesson-progress').textContent = `${completed.size} / ${ALL_LESSONS.length}`;
   byId('lesson-progress-bar').style.width = `${percent}%`;
   byId('detector-count').textContent = `${DETECTABLE_LESSONS.length} 種技巧`;
-  const totalTargets = TARGETED_LESSONS.reduce((sum, lesson) => sum + getTechniqueQuestions(assessmentTechnique(lesson), 3).length, 0);
-  const passedTargets = TARGETED_LESSONS.reduce((sum, lesson) => sum + lessonResult(lesson.id).passedQuestionIds.length, 0);
+  const totalTargets = TARGETED_LESSONS.length * 11;
+  const passedTargets = TARGETED_LESSONS.reduce((sum, lesson) => sum + Math.min(11, lessonResult(lesson.id).reasonPassedQuestionIds.length), 0);
   byId('drill-progress').textContent = `${passedTargets} / ${totalTargets}`;
   byId('activity-count').textContent = `${state.learning.totalActivities} 次`;
 
@@ -1119,10 +1370,10 @@ function renderJourney() {
       const drillDone = drill && state.learning.completedDrills.has(drill.technique);
       const result = lessonResult(lesson.id);
       const technique = assessmentTechnique(lesson);
-      const targetCount = technique ? getTechniqueQuestions(technique, 3).length : 0;
-      const passedCount = technique ? result.passedQuestionIds.filter((id) => id.startsWith(`${technique}-`)).length : 0;
+      const targetCount = technique ? 11 : 0;
+      const passedCount = technique ? Math.min(targetCount, result.reasonPassedQuestionIds.length) : 0;
       const drillButton = drill ? `<button class="drill-action ${drillDone ? 'passed' : ''}" type="button" data-technique-drill="${drill.technique}">${drillDone ? '已通過 · 再練' : '完整盤面題'}</button>` : '';
-      const mastery = targetCount ? `理解 ${result.knowledgePassed ? '✓' : '○'} · 定點 ${passedCount}/${targetCount}` : `理解 ${result.knowledgePassed ? '✓' : '○'}`;
+      const mastery = targetCount ? `理解 ${result.knowledgePassed ? '✓' : '○'} · 推理 ${passedCount}/${targetCount} · 辨識 ${Math.min(4, result.discriminationPassedIds.length)}/4 · 遷移 ${result.transferPassed ? '✓' : '○'}` : `理解 ${result.knowledgePassed ? '✓' : '○'}`;
       return `<li class="lesson-item ${done ? 'done' : ''}"><span class="lesson-state">${done ? '✓' : String(index + 1).padStart(2, '0')}</span><div class="lesson-copy"><h3>${lesson.name}${detector}${caution}</h3><p>${lesson.summary}</p><small>觀察口訣：${lesson.cue}｜${mastery}</small></div><div class="lesson-actions">${drillButton}<button class="lesson-action" type="button" data-lesson-open="${lesson.id}">${done ? '複習教學' : '開始教學'}</button></div></li>`;
     }).join('');
     return `<section class="journey-stage"><header class="stage-heading"><span class="stage-number">${stage.number}</span><div class="stage-copy"><h2>${stage.title}</h2><p>${stage.description}</p></div><div class="stage-meta"><b>${stage.level} · ${completedInStage}/${stage.lessons.length}</b><small>${stage.gate}</small><button class="stage-practice" type="button" data-practice="${stage.difficulty}">練習此階段</button></div></header><ol class="lesson-list">${lessons}</ol><p class="stage-gate"><b>過關條件：</b>${stage.gate}</p></section>`;
@@ -1133,7 +1384,10 @@ function renderJourney() {
     ? state.learning.activities.slice(0, 12).map((event) => `<li><time datetime="${event.at}">${new Date(event.at).toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' })} ${new Date(event.at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}</time><span>${event.detail}</span></li>`).join('')
     : '<li class="history-empty">尚無紀錄。完成課程、使用提示、分析或解完題目後會出現在這裡。</li>';
 
+  renderLearningInsights();
+
   document.querySelectorAll('[data-lesson-open]').forEach((button) => button.addEventListener('click', () => openLesson(button.dataset.lessonOpen)));
+  document.querySelectorAll('[data-review-open]').forEach((button) => button.addEventListener('click', () => openLesson(button.dataset.reviewOpen, 'target')));
   document.querySelectorAll('[data-practice]').forEach((button) => button.addEventListener('click', () => {
     state.generatorDifficulty = button.dataset.practice;
     document.querySelectorAll('[data-difficulty]').forEach((item) => item.classList.toggle('selected', item.dataset.difficulty === state.generatorDifficulty));
