@@ -1,7 +1,7 @@
 import { CLOUD_CONFIG, cloudConfigStatus } from './cloud-config.js';
 import { mergeProgress } from '../learning/storage.js';
 
-const FIREBASE_VERSION = '11.10.0';
+const FIREBASE_VERSION = '12.18.0';
 const sdk = (name) => `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-${name}.js`;
 
 export async function createCloudAccount({
